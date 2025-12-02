@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+      prerelease:
+        description: 'Is this a pre-release?'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Package extension
+        run: npm run package
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/v}
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VSIX_FILE=jokalala-code-analysis-$VERSION.vsix" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Generate changelog from commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ]; then
+            CHANGES=$(git log $LAST_TAG..HEAD --pretty=format:"- %s" --no-merges)
+          else
+            CHANGES=$(git log --pretty=format:"- %s" --no-merges -n 20)
+          fi
+          echo "CHANGES<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## Changes in v${{ steps.get_version.outputs.VERSION }}
+
+            ${{ steps.changelog.outputs.CHANGES }}
+
+            ## Installation
+
+            ### From VS Code Marketplace
+            Search for "Jokalala Code Analyzer" in VS Code Extensions or install from:
+            [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jokalala.code-analysis)
+
+            ### Manual Installation
+            Download the `.vsix` file below and install via:
+            ```
+            code --install-extension ${{ steps.get_version.outputs.VSIX_FILE }}
+            ```
+          files: |
+            *.vsix
+          prerelease: ${{ github.event.inputs.prerelease || false }}
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to VS Code Marketplace
+        if: ${{ !github.event.inputs.prerelease }}
+        run: npx @vscode/vsce publish -p ${{ secrets.VSCE_PAT }}
+        continue-on-error: true
+
+      - name: Publish to Open VSX Registry
+        if: ${{ !github.event.inputs.prerelease }}
+        run: npx ovsx publish *.vsix -p ${{ secrets.OVSX_PAT }}
+        continue-on-error: true

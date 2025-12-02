@@ -1,0 +1,17 @@
+# Default owners for everything in the repo
+* @jkalala
+
+# Specific ownership for critical files
+/.github/ @jkalala
+/src/services/ @jkalala
+/src/providers/ @jkalala
+/package.json @jkalala
+/tsconfig.json @jkalala
+
+# Security-related files
+/SECURITY.md @jkalala
+/src/services/security*.ts @jkalala
+
+# Documentation
+/docs/ @jkalala
+/*.md @jkalala

@@ -1,0 +1,266 @@
+{
+  "name": "jokalala-code-analysis",
+  "displayName": "Jokalala Code Analyzer",
+  "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 10+ languages.",
+  "version": "1.0.0",
+  "publisher": "jokalala",
+  "author": {
+    "name": "Jokalala Team",
+    "email": "team@jokalala.com",
+    "url": "https://jokalala.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jkalala/jokalala-code-analyzer-vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jkalala/jokalala-code-analyzer-vscode/issues",
+    "email": "support@jokalala.com"
+  },
+  "homepage": "https://github.com/jkalala/jokalala-code-analyzer-vscode#readme",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "badges": [
+    {
+      "url": "https://img.shields.io/github/license/jkalala/jokalala-code-analyzer-vscode",
+      "href": "https://github.com/jkalala/jokalala-code-analyzer-vscode/blob/main/LICENSE",
+      "description": "License"
+    },
+    {
+      "url": "https://img.shields.io/visual-studio-marketplace/v/jokalala.jokalala-code-analysis",
+      "href": "https://marketplace.visualstudio.com/items?itemName=jokalala.jokalala-code-analysis",
+      "description": "VS Code Marketplace Version"
+    },
+    {
+      "url": "https://img.shields.io/visual-studio-marketplace/d/jokalala.jokalala-code-analysis",
+      "href": "https://marketplace.visualstudio.com/items?itemName=jokalala.jokalala-code-analysis",
+      "description": "Downloads"
+    }
+  ],
+  "qna": "https://github.com/jkalala/jokalala-code-analyzer-vscode/discussions",
+  "sponsor": {
+    "url": "https://github.com/sponsors/jkalala"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "security",
+    "vulnerability",
+    "code-analysis",
+    "static-analysis",
+    "sast",
+    "sql-injection",
+    "xss",
+    "owasp",
+    "ai",
+    "machine-learning",
+    "devsecops",
+    "secure-coding"
+  ],
+  "activationEvents": [
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:python",
+    "onLanguage:java",
+    "onLanguage:go",
+    "onLanguage:rust",
+    "onLanguage:cpp",
+    "onLanguage:c",
+    "onLanguage:csharp",
+    "onLanguage:php",
+    "onLanguage:ruby"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "jokalala-code-analysis.analyzeFile",
+        "title": "Jokalala: Analyze Current File",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "jokalala-code-analysis.analyzeSelection",
+        "title": "Jokalala: Analyze Selection",
+        "icon": "$(selection)"
+      },
+      {
+        "command": "jokalala-code-analysis.analyzeProject",
+        "title": "Jokalala: Analyze Entire Project",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "jokalala-code-analysis.clearCache",
+        "title": "Jokalala: Clear Analysis Cache",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "jokalala-code-analysis.showSettings",
+        "title": "Jokalala: Open Settings",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "jokalala-code-analysis.goToIssue",
+        "title": "Go to Issue Location",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "jokalala-code-analysis.toggleViewMode",
+        "title": "Jokalala: Toggle Issues View Mode",
+        "icon": "$(list-tree)"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "jokalala-code-analysis.analyzeFile",
+          "group": "jokalala@1",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "jokalala-code-analysis.analyzeSelection",
+          "group": "jokalala@2",
+          "when": "editorHasSelection"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "jokalala-code-analysis.analyzeProject",
+          "group": "jokalala@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "jokalala-code-analysis.toggleViewMode",
+          "when": "view == jokalala-issues",
+          "group": "navigation"
+        },
+        {
+          "command": "jokalala-code-analysis.analyzeProject",
+          "when": "view == jokalala-issues",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Jokalala Code Analysis",
+      "properties": {
+        "jokalala.apiEndpoint": {
+          "type": "string",
+          "default": "http://localhost:3000/api/agents/dev-assistant",
+          "description": "API endpoint for code analysis service"
+        },
+        "jokalala.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for authentication (optional)"
+        },
+        "jokalala.analysisMode": {
+          "type": "string",
+          "enum": [
+            "quick",
+            "deep",
+            "full"
+          ],
+          "default": "full",
+          "description": "Analysis mode: quick (static only), deep (LLM only), full (both)"
+        },
+        "jokalala.autoAnalyze": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically analyze files on save"
+        },
+        "jokalala.showInlineWarnings": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline warnings in editor"
+        },
+        "jokalala.enableDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable VS Code diagnostics integration"
+        },
+        "jokalala.maxFileSize": {
+          "type": "number",
+          "default": 200000,
+          "description": "Maximum file size to analyze (in characters). Default: 200KB - industry standard"
+        },
+        "jokalala.maxProjectFiles": {
+          "type": "number",
+          "default": 40,
+          "description": "Maximum number of files included in a project analysis run"
+        },
+        "jokalala.maxProjectFileSize": {
+          "type": "number",
+          "default": 120000,
+          "description": "Maximum size (characters) for each file included in project analysis"
+        },
+        "jokalala.requestTimeout": {
+          "type": "number",
+          "default": 60000,
+          "description": "Timeout (ms) for individual analysis requests"
+        },
+        "jokalala.enableTelemetry": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow the extension to send anonymous diagnostics (session + machine identifiers)"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "jokalala-code-analysis",
+          "title": "Jokalala Code Analysis",
+          "icon": "$(bug)"
+        }
+      ]
+    },
+    "views": {
+      "jokalala-code-analysis": [
+        {
+          "id": "jokalala-issues",
+          "name": "Issues"
+        },
+        {
+          "id": "jokalala-recommendations",
+          "name": "Recommendations"
+        },
+        {
+          "id": "jokalala-metrics",
+          "name": "Code Metrics"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "pnpm run compile",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.3.8",
+    "typescript": "^5.3.3",
+    "vsce": "^2.15.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.5"
+  }
+}

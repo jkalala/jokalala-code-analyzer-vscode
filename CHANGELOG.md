@@ -1,0 +1,79 @@
+# Changelog
+
+All notable changes to the Jokalala Code Analyzer extension will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- Intelligence prioritizer for CISA KEV and EPSS vulnerability prioritization
+- Enhanced code action provider with one-click fixes
+- Quality gate for V2 analysis reports
+- Context-aware confidence scoring
+- False positive detection system
+- User feedback service for accuracy improvement
+
+### Changed
+- Improved language detection in backend analyzer
+- Enhanced misclassification detection
+
+### Fixed
+- False positive reduction in SQL injection detection
+- Improved accuracy for command injection detection
+
+## [1.0.0] - 2024-12-02
+
+### Added
+- Initial release of Jokalala Code Analyzer
+- Real-time code analysis for security vulnerabilities
+- Support for 10+ programming languages
+- VS Code tree views for issues, recommendations, and metrics
+- AI-powered recommendations
+- Secure API key storage using VS Code SecretStorage
+- Configurable caching with TTL and size limits
+- Circuit breaker pattern for fault tolerance
+- Retry logic with exponential backoff
+- Priority-based request queue
+- PII anonymization in telemetry
+- HTTPS validation for API endpoints
+- Keyboard shortcuts for common actions
+- Code actions for quick fixes
+
+### Security
+- Secure credential storage using VS Code's SecretStorage API
+- XSS prevention with HTML escaping
+- Input validation and sanitization
+- HTTPS enforcement with warnings for HTTP
+
+## [0.9.0] - 2024-11-15
+
+### Added
+- Beta release for early adopters
+- Basic vulnerability detection
+- Issue tree view
+- Configuration UI
+
+### Changed
+- Improved API response handling
+- Enhanced error messages
+
+### Fixed
+- Memory leak in long-running sessions
+- Cache invalidation issues
+
+## Types of Changes
+
+- **Added** for new features.
+- **Changed** for changes in existing functionality.
+- **Deprecated** for soon-to-be removed features.
+- **Removed** for now removed features.
+- **Fixed** for any bug fixes.
+- **Security** for vulnerability fixes.
+
+---
+
+[Unreleased]: https://github.com/jkalala/jokalala-code-analyzer-vscode/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/jkalala/jokalala-code-analyzer-vscode/releases/tag/v1.0.0
+[0.9.0]: https://github.com/jkalala/jokalala-code-analyzer-vscode/releases/tag/v0.9.0

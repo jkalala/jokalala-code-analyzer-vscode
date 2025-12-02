@@ -1,0 +1,54 @@
+version: 2
+updates:
+  # Maintain dependencies for npm
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "jokalala/core-team"
+    labels:
+      - "dependencies"
+      - "automated"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      typescript:
+        patterns:
+          - "typescript"
+          - "@types/*"
+      testing:
+        patterns:
+          - "jest"
+          - "@jest/*"
+          - "ts-jest"
+      vscode:
+        patterns:
+          - "@vscode/*"
+          - "vsce"
+      linting:
+        patterns:
+          - "eslint"
+          - "@typescript-eslint/*"
+          - "prettier"
+
+  # Maintain dependencies for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "jokalala/devops"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+    commit-message:
+      prefix: "ci"

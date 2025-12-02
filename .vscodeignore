@@ -1,0 +1,48 @@
+# Development files
+.vscode/**
+.vscode-test/**
+src/**
+out/test/**
+
+# Config files
+.gitignore
+.yarnrc
+vsc-extension-quickstart.md
+**/tsconfig.json
+**/.eslintrc.json
+.prettierrc
+.editorconfig
+
+# Build artifacts
+**/*.map
+**/*.ts
+!dist/**/*.js
+!node_modules/axios/**
+
+# GitHub specific
+.github/**
+
+# Documentation (keep README)
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+TASK_*.md
+*_COMPLETION.md
+*_SUMMARY.md
+PROJECT_STRUCTURE*.md
+COMPREHENSIVE_AUDIT*.md
+CONFIGURATION_EXAMPLES.md
+SETUP_SUMMARY.md
+API_KEY_SETUP_GUIDE.md
+PUBLISHING.md
+EXTENSION_PACKAGING_COMPLETE.md
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+coverage/**
+.nyc_output/**
+
+# Package files
+*.vsix
+node_modules/.package-lock.json

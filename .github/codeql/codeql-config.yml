@@ -1,0 +1,18 @@
+name: "CodeQL config"
+
+queries:
+  - uses: security-and-quality
+
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - '**/out/**'
+  - '**/*.test.ts'
+  - '**/test/**'
+  - '**/coverage/**'
+
+query-filters:
+  - exclude:
+      id: js/trivial-conditional
+  - exclude:
+      id: js/unused-local-variable
