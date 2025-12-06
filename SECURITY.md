@@ -6,8 +6,23 @@ We release patches for security vulnerabilities in the following versions:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.x.x   | :white_check_mark: |
+| 2.x.x   | :white_check_mark: |
+| 1.x.x   | :x: (upgrade to 2.x) |
 | < 1.0   | :x:                |
+
+## Security Improvements in v2.0.0
+
+Version 2.0.0 includes significant security hardening:
+
+| Fix | Description |
+| --- | ----------- |
+| Path Traversal Protection | All file paths are validated to stay within workspace boundaries |
+| HTTPS Enforcement | API endpoints must use HTTPS (HTTP only allowed for localhost) |
+| Secure Credential Storage | Plaintext API keys in settings are now rejected - use SecretStorage |
+| Cache Encryption | Cached data is encrypted using AES-256-GCM |
+| Privacy by Default | Telemetry is now opt-in (disabled by default) |
+| Memory Safety | Fixed unbounded cache growth that could cause memory leaks |
+| Type Safety | Removed unsafe `any` types throughout the codebase |
 
 ## Reporting a Vulnerability
 

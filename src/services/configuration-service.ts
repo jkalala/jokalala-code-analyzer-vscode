@@ -15,8 +15,8 @@ export type AnalysisMode = 'quick' | 'deep' | 'full'
 const CONFIGURATION_SCHEMA: ConfigurationSchema = {
   apiEndpoint: {
     type: 'string',
-    default: 'https://localhost:3000/api/agents/dev-assistant',
-    description: 'API endpoint for code analysis service',
+    default: 'https://api.jokalala.com/api/agents/dev-assistant',
+    description: 'API endpoint for code analysis service (must use HTTPS)',
     required: true,
   },
   apiKey: {
@@ -84,8 +84,9 @@ const CONFIGURATION_SCHEMA: ConfigurationSchema = {
   },
   enableTelemetry: {
     type: 'boolean',
-    default: true,
-    description: 'Enable anonymous telemetry collection',
+    default: false,
+    description:
+      'Enable anonymous telemetry collection (opt-in for privacy by default)',
     required: true,
   },
   cacheEnabled: {
@@ -276,10 +277,23 @@ export class ConfigurationService implements IConfigurationService {
       if (key === 'apiEndpoint' && typeof value === 'string') {
         try {
           const url = new URL(value)
-          if (url.protocol !== 'https:') {
+          // Enforce HTTPS for all non-localhost endpoints (security requirement)
+          const isLocalhost =
+            url.hostname === 'localhost' || url.hostname === '127.0.0.1'
+          if (url.protocol !== 'https:' && !isLocalhost) {
+            errors.push({
+              setting: key,
+              message:
+                'API endpoint must use HTTPS for security. HTTP is only allowed for localhost development.',
+              currentValue: value,
+              expectedType: 'HTTPS URL',
+            })
+          } else if (url.protocol !== 'https:' && isLocalhost) {
+            // Allow HTTP for localhost but warn the user
             warnings.push({
               setting: key,
-              message: 'API endpoint should use HTTPS for security',
+              message:
+                'Using HTTP for localhost development. Ensure HTTPS is used in production.',
               currentValue: value,
               suggestedValue: value.replace('http:', 'https:'),
             })
@@ -293,19 +307,21 @@ export class ConfigurationService implements IConfigurationService {
         }
       }
 
-      // Deprecated apiKey warning
+      // Deprecated apiKey - storing in plaintext settings is a security risk
       if (
         key === 'apiKey' &&
         value &&
         typeof value === 'string' &&
         value.trim() !== ''
       ) {
-        warnings.push({
+        errors.push({
           setting: key,
           message:
-            'Storing API key in settings is deprecated. Use SecretStorage instead.',
+            'Storing API keys in plaintext settings is insecure and no longer supported. ' +
+            'Please remove the API key from settings and use the "Set API Key" command ' +
+            'which stores credentials securely using VS Code SecretStorage.',
           currentValue: '[REDACTED]',
-          suggestedValue: 'Move to SecretStorage',
+          expectedType: 'SecretStorage',
         })
       }
     }

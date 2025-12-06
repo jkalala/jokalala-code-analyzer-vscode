@@ -6,6 +6,7 @@
 import * as vscode from 'vscode'
 import { CACHE_DEFAULTS, RESOURCE_LIMITS } from '../constants'
 import { CacheEntry, CacheStats, ICacheService } from '../interfaces'
+import { cacheEncryption, EncryptedData } from '../utils/cache-encryption'
 
 /**
  * CacheService implements an LRU (Least Recently Used) cache with TTL support
@@ -143,7 +144,8 @@ export class CacheService implements ICacheService {
   }
 
   /**
-   * Persist cache to workspace storage
+   * Persist cache to workspace storage with encryption
+   * Sensitive cached data is encrypted before storage
    */
   async persist(): Promise<void> {
     if (!this.context) {
@@ -151,6 +153,9 @@ export class CacheService implements ICacheService {
     }
 
     try {
+      // Initialize encryption if not already done
+      await cacheEncryption.initialize()
+
       // Convert cache to serializable format
       const serializedCache: Record<string, CacheEntry<unknown>> = {}
 
@@ -161,15 +166,27 @@ export class CacheService implements ICacheService {
         }
       }
 
-      await this.context.workspaceState.update('cacheData', serializedCache)
-      await this.context.workspaceState.update(
-        'cacheAccessOrder',
-        this.accessOrder
-      )
-      await this.context.workspaceState.update('cacheStats', {
+      // Encrypt the cache data before storing
+      const encryptedCache = cacheEncryption.encrypt(serializedCache)
+      const encryptedAccessOrder = cacheEncryption.encrypt(this.accessOrder)
+      const encryptedStats = cacheEncryption.encrypt({
         hits: this.hits,
         misses: this.misses,
       })
+
+      // Store encrypted data (falls back to unencrypted if encryption fails)
+      await this.context.workspaceState.update(
+        'cacheData',
+        encryptedCache ?? serializedCache
+      )
+      await this.context.workspaceState.update(
+        'cacheAccessOrder',
+        encryptedAccessOrder ?? this.accessOrder
+      )
+      await this.context.workspaceState.update(
+        'cacheStats',
+        encryptedStats ?? { hits: this.hits, misses: this.misses }
+      )
     } catch (error) {
       // Log error but don't throw - persistence failure shouldn't break the extension
       console.error('Failed to persist cache:', error)
@@ -177,7 +194,8 @@ export class CacheService implements ICacheService {
   }
 
   /**
-   * Restore cache from workspace storage
+   * Restore cache from workspace storage with decryption
+   * Handles both encrypted and legacy unencrypted data
    */
   async restore(): Promise<void> {
     if (!this.context) {
@@ -185,21 +203,60 @@ export class CacheService implements ICacheService {
     }
 
     try {
-      const serializedCache =
-        this.context.workspaceState.get<Record<string, CacheEntry<unknown>>>(
-          'cacheData'
-        )
+      // Initialize encryption for decryption
+      await cacheEncryption.initialize()
 
-      const accessOrder =
-        this.context.workspaceState.get<string[]>('cacheAccessOrder')
+      // Get stored data (may be encrypted or plain)
+      const storedCache = this.context.workspaceState.get<
+        Record<string, CacheEntry<unknown>> | EncryptedData
+      >('cacheData')
 
-      const stats = this.context.workspaceState.get<{
-        hits: number
-        misses: number
-      }>('cacheStats')
+      const storedAccessOrder = this.context.workspaceState.get<
+        string[] | EncryptedData
+      >('cacheAccessOrder')
 
+      const storedStats = this.context.workspaceState.get<
+        { hits: number; misses: number } | EncryptedData
+      >('cacheStats')
+
+      // Decrypt or use plain data
+      let serializedCache: Record<string, CacheEntry<unknown>> | null = null
+      let accessOrder: string[] | null = null
+      let stats: { hits: number; misses: number } | null = null
+
+      // Handle cache data
+      if (storedCache) {
+        if (cacheEncryption.isEncrypted(storedCache)) {
+          serializedCache = cacheEncryption.decrypt<
+            Record<string, CacheEntry<unknown>>
+          >(storedCache)
+        } else {
+          serializedCache = storedCache as Record<string, CacheEntry<unknown>>
+        }
+      }
+
+      // Handle access order
+      if (storedAccessOrder) {
+        if (cacheEncryption.isEncrypted(storedAccessOrder)) {
+          accessOrder = cacheEncryption.decrypt<string[]>(storedAccessOrder)
+        } else {
+          accessOrder = storedAccessOrder as string[]
+        }
+      }
+
+      // Handle stats
+      if (storedStats) {
+        if (cacheEncryption.isEncrypted(storedStats)) {
+          stats = cacheEncryption.decrypt<{ hits: number; misses: number }>(
+            storedStats
+          )
+        } else {
+          stats = storedStats as { hits: number; misses: number }
+        }
+      }
+
+      // Restore cache entries
       if (serializedCache) {
-        // Restore cache entries, filtering out expired ones
         const now = Date.now()
         for (const [key, entry] of Object.entries(serializedCache)) {
           if (now <= entry.expiresAt) {
@@ -226,21 +283,32 @@ export class CacheService implements ICacheService {
 
   /**
    * Dispose of resources
+   * Clears encryption keys and stops cleanup timer
    */
   dispose(): void {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer)
       this.cleanupTimer = undefined
     }
+
+    // Clear encryption key from memory
+    cacheEncryption.dispose()
   }
 
   /**
    * Update access order for LRU tracking
    * Moves the key to the end of the access order (most recently used)
+   * Enforces maximum size to prevent unbounded memory growth
    */
   private updateAccessOrder(key: string): void {
     this.removeFromAccessOrder(key)
     this.accessOrder.push(key)
+
+    // Enforce maximum size to prevent memory leaks
+    // If accessOrder exceeds maxEntries, evict oldest entries
+    while (this.accessOrder.length > CACHE_DEFAULTS.maxEntries) {
+      this.evictLRU()
+    }
   }
 
   /**

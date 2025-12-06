@@ -7,6 +7,41 @@ import {
   FileAnalysisResult,
   Issue,
 } from './interfaces/code-analysis-service.interface'
+
+/**
+ * Validates that a file path is within the workspace boundary.
+ * Prevents path traversal attacks (e.g., ../../../etc/passwd).
+ * @param workspaceRoot The workspace root directory
+ * @param filePath The file path to validate (relative or absolute)
+ * @returns The validated absolute path, or null if the path is outside workspace
+ */
+function validatePathWithinWorkspace(
+  workspaceRoot: string,
+  filePath: string
+): string | null {
+  // Normalize and resolve the path to eliminate traversal sequences
+  const normalizedRoot = path.normalize(workspaceRoot)
+  const absolutePath = path.isAbsolute(filePath)
+    ? path.normalize(filePath)
+    : path.normalize(path.join(normalizedRoot, filePath))
+
+  // Check if the resolved path is within the workspace root
+  // Use path.resolve to get the real path after all traversals
+  const resolvedPath = path.resolve(absolutePath)
+  const resolvedRoot = path.resolve(normalizedRoot)
+
+  // Ensure the resolved path starts with the workspace root
+  // Add path.sep to prevent matching partial directory names
+  // (e.g., /workspace-evil shouldn't match /workspace)
+  if (
+    !resolvedPath.startsWith(resolvedRoot + path.sep) &&
+    resolvedPath !== resolvedRoot
+  ) {
+    return null
+  }
+
+  return resolvedPath
+}
 import { ExtensionSettings } from './interfaces/configuration-service.interface'
 import type { V2AnalysisReport } from './interfaces/v2-report.interface'
 import {
@@ -244,11 +279,10 @@ async function analyzeSelection() {
         const result = await codeAnalysisService.analyzeCode(code, language)
 
         handleAnalysisSuccess(result, editor.document, settings)
-      } catch (error: any) {
-        logger.error('Selection analysis error', error)
-        const errorMessage =
-          error?.message || error?.toString() || 'Unknown error'
-        vscode.window.showErrorMessage(`Analysis failed: ${errorMessage}`)
+      } catch (error: unknown) {
+        const errorObj = error instanceof Error ? error : new Error(String(error))
+        logger.error('Selection analysis error', errorObj)
+        vscode.window.showErrorMessage(`Analysis failed: ${errorObj.message}`)
       }
     }
   )
@@ -290,11 +324,10 @@ async function analyzeDocument(document: vscode.TextDocument) {
         })
 
         handleAnalysisSuccess(result, document, settings)
-      } catch (error: any) {
-        logger.error('Analysis error', error)
-        const errorMessage =
-          error?.message || error?.toString() || 'Unknown error'
-        vscode.window.showErrorMessage(`Analysis failed: ${errorMessage}`)
+      } catch (error: unknown) {
+        const errorObj = error instanceof Error ? error : new Error(String(error))
+        logger.error('Analysis error', errorObj)
+        vscode.window.showErrorMessage(`Analysis failed: ${errorObj.message}`)
       }
     }
   )
@@ -395,13 +428,19 @@ async function analyzeProject() {
         const fileResultsMap = new Map<string, FileAnalysisResult>()
 
         // Initialize with all analyzed files (even those with no issues)
+        const workspaceRoot = folders[0]!.uri.fsPath
         files.forEach(file => {
-          const absolutePath = path.join(folders[0]!.uri.fsPath, file.path)
-          fileResultsMap.set(file.path, {
-            filePath: absolutePath,
-            issues: [],
-            language: file.language,
-          })
+          // Validate path is within workspace to prevent path traversal
+          const validatedPath = validatePathWithinWorkspace(workspaceRoot, file.path)
+          if (validatedPath) {
+            fileResultsMap.set(file.path, {
+              filePath: validatedPath,
+              issues: [],
+              language: file.language,
+            })
+          } else {
+            logger.warn(`Skipping file with invalid path: ${file.path}`)
+          }
         })
 
         // Group normalized issues by file path
@@ -418,18 +457,21 @@ async function analyzeProject() {
               })
             } else {
               // Create new entry for files not in our original list
-              const absolutePath = path.isAbsolute(issueFilePath)
-                ? issueFilePath
-                : path.join(folders[0]!.uri.fsPath, issueFilePath)
-              fileResultsMap.set(relativePath, {
-                filePath: absolutePath,
-                issues: [
-                  {
-                    ...issue,
-                    filePath: absolutePath,
-                  },
-                ],
-              })
+              // Validate path to prevent path traversal attacks
+              const validatedPath = validatePathWithinWorkspace(workspaceRoot, issueFilePath)
+              if (validatedPath) {
+                fileResultsMap.set(relativePath, {
+                  filePath: validatedPath,
+                  issues: [
+                    {
+                      ...issue,
+                      filePath: validatedPath,
+                    },
+                  ],
+                })
+              } else {
+                logger.warn(`Skipping issue with invalid file path: ${issueFilePath}`)
+              }
             }
           }
         })
@@ -464,16 +506,17 @@ async function analyzeProject() {
         metricsTreeProvider.updateMetrics(result.summary)
 
         showAnalysisSummary(result.summary)
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (token.isCancellationRequested) {
           logger.warn('Project analysis cancelled after request was sent')
           resetStatusBar()
           return
         }
 
-        logger.error('Project analysis failed', error)
+        const errorObj = error instanceof Error ? error : new Error(String(error))
+        logger.error('Project analysis failed', errorObj)
         vscode.window.showErrorMessage(
-          `Project analysis failed: ${error?.message || error}`
+          `Project analysis failed: ${errorObj.message}`
         )
       }
     }
@@ -535,9 +578,10 @@ async function validateConfiguration() {
     vscode.window.showInformationMessage(
       'Jokalala service connection verified.'
     )
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorObj = error instanceof Error ? error : new Error(String(error))
     vscode.window.showWarningMessage(
-      `Jokalala service health check failed. You can still attempt analysis. (${error.message})`
+      `Jokalala service health check failed. You can still attempt analysis. (${errorObj.message})`
     )
   }
 }
