@@ -2,7 +2,7 @@
   "name": "jokalala-code-analysis",
   "displayName": "Jokalala Code Analyzer",
   "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 10+ languages.",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "publisher": "jokalala",
   "author": {
     "name": "Jokalala Team",
@@ -157,13 +157,16 @@
       "properties": {
         "jokalala.apiEndpoint": {
           "type": "string",
-          "default": "http://localhost:3000/api/agents/dev-assistant",
-          "description": "API endpoint for code analysis service"
+          "default": "https://api.jokalala.com/api/agents/dev-assistant",
+          "description": "API endpoint for code analysis service (must use HTTPS)",
+          "pattern": "^https://.*",
+          "patternErrorMessage": "API endpoint must use HTTPS for security. HTTP is only allowed for localhost development."
         },
         "jokalala.apiKey": {
           "type": "string",
           "default": "",
-          "description": "API key for authentication (optional)"
+          "description": "DEPRECATED: Use the 'Set API Key' command instead. API keys in settings are no longer supported for security reasons.",
+          "deprecationMessage": "Storing API keys in settings is insecure. Use the 'Jokalala: Set API Key' command which uses VS Code SecretStorage."
         },
         "jokalala.analysisMode": {
           "type": "string",
@@ -212,8 +215,8 @@
         },
         "jokalala.enableTelemetry": {
           "type": "boolean",
-          "default": true,
-          "description": "Allow the extension to send anonymous diagnostics (session + machine identifiers)"
+          "default": false,
+          "description": "Opt-in to send anonymous diagnostics for improving the extension (disabled by default for privacy)"
         }
       }
     },
