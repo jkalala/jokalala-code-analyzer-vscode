@@ -144,9 +144,9 @@ If you're running your own Jokalala backend:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `jokalala.maxFileSize` | `1048576` | Max file size (1MB) |
-| `jokalala.maxProjectFiles` | `100` | Max files in project analysis |
-| `jokalala.maxProjectFileSize` | `524288` | Max file size in project (512KB) |
+| `jokalala.maxFileSize` | `200000` | Max file size (200KB) |
+| `jokalala.maxProjectFiles` | `40` | Max files in project analysis |
+| `jokalala.maxProjectFileSize` | `120000` | Max file size in project (120KB) |
 
 ### Advanced Settings
 
