@@ -2,7 +2,7 @@
   "name": "jokalala-code-analysis",
   "displayName": "Jokalala Code Analyzer",
   "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 10+ languages.",
-  "version": "2.0.0",
+  "version": "1.0.5",
   "publisher": "jokalala",
   "author": {
     "name": "Jokalala Team",
@@ -79,7 +79,15 @@
     "onLanguage:c",
     "onLanguage:csharp",
     "onLanguage:php",
-    "onLanguage:ruby"
+    "onLanguage:ruby",
+    "onLanguage:dockerfile",
+    "onLanguage:yaml",
+    "onLanguage:terraform",
+    "onLanguage:json",
+    "workspaceContains:**/Dockerfile*",
+    "workspaceContains:**/docker-compose*.yml",
+    "workspaceContains:**/*.tf",
+    "workspaceContains:**/kubernetes/*.yaml"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -118,6 +126,136 @@
         "command": "jokalala-code-analysis.toggleViewMode",
         "title": "Jokalala: Toggle Issues View Mode",
         "icon": "$(list-tree)"
+      },
+      {
+        "command": "jokalala.searchCVE",
+        "title": "Jokalala: Search CVE/CWE Database",
+        "icon": "$(search)"
+      },
+      {
+        "command": "jokalala.scanForCVEs",
+        "title": "Jokalala: Scan Current File for CVEs",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "jokalala.showCVEDetails",
+        "title": "Show CVE Details",
+        "icon": "$(info)"
+      },
+      {
+        "command": "jokalala.applyCVEFix",
+        "title": "Apply CVE Fix",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "jokalala.clearCVEResults",
+        "title": "Jokalala: Clear CVE Results",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "jokalala.analyzeRefactoring",
+        "title": "Jokalala: Analyze for Refactoring",
+        "icon": "$(lightbulb)"
+      },
+      {
+        "command": "jokalala.quickFix",
+        "title": "Jokalala: Quick Fix Issue",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "jokalala.batchRefactor",
+        "title": "Jokalala: Apply All Safe Fixes",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "jokalala.showRefactoringDetails",
+        "title": "Show Refactoring Details",
+        "icon": "$(info)"
+      },
+      {
+        "command": "jokalala.applyRefactoringFix",
+        "title": "Apply Refactoring Fix",
+        "icon": "$(check)"
+      },
+      {
+        "command": "jokalala.previewRefactoringDiff",
+        "title": "Preview Refactoring Changes",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "jokalala.clearRefactoringResults",
+        "title": "Jokalala: Clear Refactoring Results",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "jokalala.scanDependencies",
+        "title": "Jokalala: Scan Dependencies (SCA)",
+        "icon": "$(package)"
+      },
+      {
+        "command": "jokalala.generateSBOM",
+        "title": "Jokalala: Generate SBOM",
+        "icon": "$(file-text)"
+      },
+      {
+        "command": "jokalala.checkLicenses",
+        "title": "Jokalala: Check License Compliance",
+        "icon": "$(law)"
+      },
+      {
+        "command": "jokalala.showSCAVulnerabilityDetails",
+        "title": "Show Vulnerability Details",
+        "icon": "$(info)"
+      },
+      {
+        "command": "jokalala.clearSCAResults",
+        "title": "Jokalala: Clear SCA Results",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "jokalala.scanContainerIaC",
+        "title": "Jokalala: Scan Container/IaC Files",
+        "icon": "$(server)"
+      },
+      {
+        "command": "jokalala.scanDockerfiles",
+        "title": "Jokalala: Scan Dockerfiles",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "jokalala.scanKubernetes",
+        "title": "Jokalala: Scan Kubernetes Manifests",
+        "icon": "$(server)"
+      },
+      {
+        "command": "jokalala.scanTerraform",
+        "title": "Jokalala: Scan Terraform Files",
+        "icon": "$(cloud)"
+      },
+      {
+        "command": "jokalala.scanCurrentContainerFile",
+        "title": "Jokalala: Scan Current Container/IaC File",
+        "icon": "$(file)"
+      },
+      {
+        "command": "jokalala.goToContainerIaCIssue",
+        "title": "Go to Issue",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "jokalala.showContainerIaCIssueDetails",
+        "title": "Show Issue Details",
+        "icon": "$(info)"
+      },
+      {
+        "command": "jokalala.toggleContainerIaCViewMode",
+        "title": "Toggle View Mode",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "jokalala.clearContainerIaCResults",
+        "title": "Jokalala: Clear Container/IaC Results",
+        "icon": "$(clear-all)"
       }
     ],
     "menus": {
@@ -149,6 +287,88 @@
           "command": "jokalala-code-analysis.analyzeProject",
           "when": "view == jokalala-issues",
           "group": "navigation"
+        },
+        {
+          "command": "jokalala.searchCVE",
+          "when": "view == jokalala-cve",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jokalala.scanForCVEs",
+          "when": "view == jokalala-cve",
+          "group": "navigation@2"
+        },
+        {
+          "command": "jokalala.clearCVEResults",
+          "when": "view == jokalala-cve",
+          "group": "navigation@3"
+        },
+        {
+          "command": "jokalala.analyzeRefactoring",
+          "when": "view == jokalala-refactoring",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jokalala.batchRefactor",
+          "when": "view == jokalala-refactoring",
+          "group": "navigation@2"
+        },
+        {
+          "command": "jokalala.clearRefactoringResults",
+          "when": "view == jokalala-refactoring",
+          "group": "navigation@3"
+        },
+        {
+          "command": "jokalala.scanDependencies",
+          "when": "view == jokalala-sca",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jokalala.generateSBOM",
+          "when": "view == jokalala-sca",
+          "group": "navigation@2"
+        },
+        {
+          "command": "jokalala.checkLicenses",
+          "when": "view == jokalala-sca",
+          "group": "navigation@3"
+        },
+        {
+          "command": "jokalala.clearSCAResults",
+          "when": "view == jokalala-sca",
+          "group": "navigation@4"
+        },
+        {
+          "command": "jokalala.scanContainerIaC",
+          "when": "view == jokalala-container-iac",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jokalala.scanCurrentContainerFile",
+          "when": "view == jokalala-container-iac",
+          "group": "navigation@2"
+        },
+        {
+          "command": "jokalala.toggleContainerIaCViewMode",
+          "when": "view == jokalala-container-iac",
+          "group": "navigation@3"
+        },
+        {
+          "command": "jokalala.clearContainerIaCResults",
+          "when": "view == jokalala-container-iac",
+          "group": "navigation@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "jokalala.applyRefactoringFix",
+          "when": "view == jokalala-refactoring && viewItem == refactoringIssue-fixable",
+          "group": "inline@1"
+        },
+        {
+          "command": "jokalala.previewRefactoringDiff",
+          "when": "view == jokalala-refactoring && viewItem =~ /^refactoringIssue/",
+          "group": "inline@2"
         }
       ]
     },
@@ -157,16 +377,14 @@
       "properties": {
         "jokalala.apiEndpoint": {
           "type": "string",
-          "default": "https://api.jokalala.com/api/agents/dev-assistant",
-          "description": "API endpoint for code analysis service (must use HTTPS)",
-          "pattern": "^https://.*",
-          "patternErrorMessage": "API endpoint must use HTTPS for security. HTTP is only allowed for localhost development."
+          "default": "http://localhost:3000/api/agents/dev-assistant",
+          "description": "API endpoint for code analysis service"
         },
         "jokalala.apiKey": {
           "type": "string",
           "default": "",
-          "description": "DEPRECATED: Use the 'Set API Key' command instead. API keys in settings are no longer supported for security reasons.",
-          "deprecationMessage": "Storing API keys in settings is insecure. Use the 'Jokalala: Set API Key' command which uses VS Code SecretStorage."
+          "description": "API key for authentication (optional)",
+          "deprecationMessage": "This setting is deprecated. Use the 'Jokalala: Set API Key' command instead, which stores your key securely using VS Code's SecretStorage."
         },
         "jokalala.analysisMode": {
           "type": "string",
@@ -215,8 +433,8 @@
         },
         "jokalala.enableTelemetry": {
           "type": "boolean",
-          "default": false,
-          "description": "Opt-in to send anonymous diagnostics for improving the extension (disabled by default for privacy)"
+          "default": true,
+          "description": "Allow the extension to send anonymous diagnostics (session + machine identifiers)"
         }
       }
     },
@@ -236,12 +454,28 @@
           "name": "Issues"
         },
         {
+          "id": "jokalala-cve",
+          "name": "CVE Database"
+        },
+        {
           "id": "jokalala-recommendations",
           "name": "Recommendations"
         },
         {
           "id": "jokalala-metrics",
           "name": "Code Metrics"
+        },
+        {
+          "id": "jokalala-refactoring",
+          "name": "Refactoring"
+        },
+        {
+          "id": "jokalala-sca",
+          "name": "Dependencies (SCA)"
+        },
+        {
+          "id": "jokalala-container-iac",
+          "name": "Container & IaC Security"
         }
       ]
     }
@@ -261,7 +495,6 @@
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.3.8",
-    "sharp": "^0.34.5",
     "typescript": "^5.3.3",
     "vsce": "^2.15.0"
   },
