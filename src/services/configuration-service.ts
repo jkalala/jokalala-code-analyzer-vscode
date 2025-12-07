@@ -52,7 +52,7 @@ const CONFIGURATION_SCHEMA: ConfigurationSchema = {
   },
   maxFileSize: {
     type: 'number',
-    default: 50_000,
+    default: 200_000,
     description: 'Maximum file size for analysis (characters)',
     minimum: 1000,
     maximum: 500_000,

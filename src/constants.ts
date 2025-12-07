@@ -5,7 +5,7 @@
 
 export const RESOURCE_LIMITS = {
   /** Maximum file size to analyze (in characters) */
-  maxFileSize: 50_000,
+  maxFileSize: 200_000,
 
   /** Maximum number of files in project analysis */
   maxProjectFiles: 40,
