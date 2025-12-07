@@ -1,8 +1,8 @@
 # Jokalala Code Analysis - VS Code Extension
 
-A powerful VS Code extension that provides real-time code analysis, security vulnerability detection, and intelligent recommendations powered by AI.
+A powerful VS Code extension that provides real-time code analysis, security vulnerability detection, and intelligent recommendations powered by AI. Now with **Container/IaC security scanning**, **Software Composition Analysis (SCA)**, and support for **19 programming languages**.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/jkalala/jokalala-code-analyzer-vscode)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/jkalala/jokalala-code-analyzer-vscode)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85.0+-007ACC.svg)](https://code.visualstudio.com/)
 
@@ -23,17 +23,56 @@ A powerful VS Code extension that provides real-time code analysis, security vul
 - **Selection Analysis**: Analyze specific code selections for targeted feedback
 - **Project Analysis**: Comprehensive analysis of entire projects with prioritized issue reporting
 
-### 🛡️ Security & Quality
+### 🛡️ Security Vulnerability Detection
 
-- **Vulnerability Detection**: Identify security vulnerabilities including SQL injection, XSS, path traversal, and more
-- **Code Quality Metrics**: Track code quality, maintainability, and security risk scores
-- **Best Practice Recommendations**: Get actionable recommendations to improve your code
+- **50+ Vulnerability Types**: SQL injection, XSS, command injection, path traversal, and more
+- **OWASP Top 10 Coverage**: Comprehensive detection of all OWASP Top 10 vulnerabilities
+- **CWE/CVE Mapping**: Industry-standard vulnerability classification
+- **CISA KEV & EPSS**: Prioritization using exploit data and probability scores
 
-### 📊 Interactive Views
+### 🐳 Container & Infrastructure-as-Code Security (NEW)
 
-- **Issues Tree View**: Browse and navigate issues organized by severity (Critical, High, Medium, Low)
-- **Recommendations Tree View**: View AI-powered recommendations with detailed descriptions
-- **Metrics Tree View**: Monitor code quality metrics and security risk scores
+Scan your infrastructure configurations for security misconfigurations:
+
+- **Dockerfile Analysis**: Detect insecure base images, root user usage, exposed secrets, missing health checks (CIS Docker Benchmark)
+- **Docker Compose**: Identify privileged containers, host network sharing, Docker socket mounts
+- **Kubernetes Manifests**: Find privileged pods, missing security contexts, dangerous capabilities (CIS Kubernetes Benchmark, NSA/CISA Guide)
+- **Terraform**: Detect open security groups, public resources, disabled encryption, hardcoded secrets
+- **CloudFormation**: AWS infrastructure template security analysis
+- **Helm Charts**: Kubernetes package security scanning
+
+### 📦 Software Composition Analysis (SCA) (NEW)
+
+Secure your dependencies across multiple ecosystems:
+
+- **Multi-ecosystem Support**: npm, pip, Maven, Gradle, Go, Rust, Ruby, PHP, .NET
+- **NVD Integration**: Real-time CVE lookups with CVSS scores
+- **SBOM Generation**: CycloneDX 1.5 and SPDX 2.3 format support
+- **License Compliance**: Detect high-risk (GPL, AGPL) and medium-risk licenses
+
+### 🌐 Language Support (19 Languages)
+
+**Web & Frontend:**
+- JavaScript, TypeScript, Vue.js SFC, Svelte/SvelteKit
+
+**Backend & Systems:**
+- Python, Java, Kotlin, Scala, Go, Rust, C, C++, C#, PHP, Ruby
+
+**Mobile:**
+- Swift, Objective-C, Dart/Flutter
+
+**Blockchain:**
+- Solidity (30+ smart contract patterns, SWC Registry compliant)
+
+### 📊 Interactive Tree Views
+
+- **Issues View**: Browse issues organized by severity with one-click navigation
+- **CVE Database**: Search and scan for known vulnerabilities
+- **Recommendations**: AI-powered improvement suggestions
+- **Code Metrics**: Quality and security risk scores
+- **Refactoring**: AI-powered code improvements with diff preview
+- **Dependencies (SCA)**: Vulnerable dependency visualization
+- **Container & IaC Security**: Infrastructure security issues by type or severity
 
 ### ⚡ Performance Features
 
@@ -51,7 +90,11 @@ A powerful VS Code extension that provides real-time code analysis, security vul
 
 ## Installation
 
-### From VSIX (Recommended)
+### From VS Code Marketplace
+
+Search for "Jokalala Code Analyzer" in VS Code Extensions.
+
+### From VSIX
 
 1. Download the latest `.vsix` file from releases
 2. Open VS Code
@@ -114,68 +157,26 @@ Deploy your own backend and generate keys from your admin dashboard.
 3. Configure:
    - **API Endpoint**: `https://api.jokalala.com/analyze`
    - **API Key**: Your personal API key
-   - **Analysis Mode**: `full` or `quick`
+   - **Analysis Mode**: `full`, `deep`, or `quick`
    - **Auto Analyze**: Enable/disable auto-analysis on save
 
 #### Method 3: settings.json (Advanced)
 
-1. Open Command Palette → **Preferences: Open User Settings (JSON)**
-2. Add configuration:
-
 ```json
 {
   "jokalala.apiEndpoint": "https://api.jokalala.com/analyze",
-  "jokalala.apiKey": "jkl_your_api_key_here",
   "jokalala.analysisMode": "full",
-  "jokalala.autoAnalyze": true
-}
-```
-
-**🔒 Security Note**: API keys in `settings.json` are automatically migrated to VS Code's encrypted SecretStorage on first use.
-
-### Optional Settings
-
-```json
-{
-  // Analysis mode: 'quick' or 'full'
-  "jokalala.analysisMode": "full",
-
-  // Auto-analyze on file save
   "jokalala.autoAnalyze": true,
-
-  // Show inline warnings in editor
   "jokalala.showInlineWarnings": true,
-
-  // Enable VS Code diagnostics integration
   "jokalala.enableDiagnostics": true,
-
-  // Maximum file size for analysis (bytes)
-  "jokalala.maxFileSize": 1048576,
-
-  // Request timeout (milliseconds)
-  "jokalala.requestTimeout": 30000,
-
-  // Enable telemetry
-  "jokalala.enableTelemetry": true,
-
-  // Cache settings
-  "jokalala.cacheEnabled": true,
-  "jokalala.cacheTTL": 3600000,
-  "jokalala.maxCacheSize": 100,
-
-  // Retry settings
-  "jokalala.retryEnabled": true,
-  "jokalala.maxRetries": 3,
-  "jokalala.retryDelay": 1000,
-
-  // Circuit breaker settings
-  "jokalala.circuitBreakerEnabled": true,
-  "jokalala.circuitBreakerThreshold": 5,
-
-  // Logging level
-  "jokalala.logLevel": "info"
+  "jokalala.maxFileSize": 200000,
+  "jokalala.maxProjectFiles": 40,
+  "jokalala.requestTimeout": 60000,
+  "jokalala.enableTelemetry": true
 }
 ```
+
+**🔒 Security Note**: Use the `Jokalala: Set API Key` command for secure credential storage via VS Code's encrypted SecretStorage.
 
 ## Usage
 
@@ -183,11 +184,40 @@ Deploy your own backend and generate keys from your admin dashboard.
 
 Access commands via Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`):
 
-- **Jokalala: Analyze Current File** - Analyze the currently open file
-- **Jokalala: Analyze Selection** - Analyze the selected code
-- **Jokalala: Analyze Project** - Analyze the entire workspace
-- **Jokalala: Clear Cache** - Clear the analysis cache
-- **Jokalala: Show Settings** - Open extension settings
+**Code Analysis:**
+- `Jokalala: Analyze Current File` - Analyze the currently open file
+- `Jokalala: Analyze Selection` - Analyze the selected code
+- `Jokalala: Analyze Entire Project` - Analyze the entire workspace
+- `Jokalala: Clear Analysis Cache` - Clear the analysis cache
+
+**CVE Database:**
+- `Jokalala: Search CVE/CWE Database` - Search known vulnerabilities
+- `Jokalala: Scan Current File for CVEs` - Find CVEs in current file
+- `Jokalala: Clear CVE Results` - Clear CVE scan results
+
+**Refactoring:**
+- `Jokalala: Analyze for Refactoring` - Get AI refactoring suggestions
+- `Jokalala: Quick Fix Issue` - Apply quick fixes
+- `Jokalala: Apply All Safe Fixes` - Batch apply fixes
+- `Jokalala: Clear Refactoring Results` - Clear refactoring data
+
+**Dependencies (SCA):**
+- `Jokalala: Scan Dependencies (SCA)` - Scan project dependencies
+- `Jokalala: Generate SBOM` - Generate Software Bill of Materials
+- `Jokalala: Check License Compliance` - Check dependency licenses
+- `Jokalala: Clear SCA Results` - Clear SCA data
+
+**Container & IaC Security:**
+- `Jokalala: Scan Container/IaC Files` - Scan all infrastructure files
+- `Jokalala: Scan Dockerfiles` - Scan only Dockerfile configurations
+- `Jokalala: Scan Kubernetes Manifests` - Scan Kubernetes YAML files
+- `Jokalala: Scan Terraform Files` - Scan Terraform configurations
+- `Jokalala: Scan Current Container/IaC File` - Scan currently open file
+- `Jokalala: Clear Container/IaC Results` - Clear infrastructure scan data
+
+**Settings:**
+- `Jokalala: Open Settings` - Open extension settings
+- `Jokalala: Set API Key` - Securely store API key
 
 ### Keyboard Shortcuts
 
@@ -196,20 +226,72 @@ Access commands via Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`):
 
 ### Tree Views
 
-The extension adds three tree views to the Explorer sidebar:
+The extension adds seven tree views to the sidebar:
 
-1. **Jokalala Issues** - View all detected issues organized by severity
-2. **Jokalala Recommendations** - Browse AI-powered recommendations
-3. **Jokalala Metrics** - Monitor code quality and security metrics
+1. **Issues** - Detected security issues organized by severity
+2. **CVE Database** - Search and browse known vulnerabilities
+3. **Recommendations** - AI-powered code improvement suggestions
+4. **Code Metrics** - Quality and security risk metrics
+5. **Refactoring** - AI-powered refactoring opportunities with one-click fixes
+6. **Dependencies (SCA)** - Vulnerable dependencies with severity indicators
+7. **Container & IaC Security** - Infrastructure security issues organized by type or severity
 
 ### Code Actions
 
 When issues are detected, the extension provides quick fixes:
 
 - **Apply Suggestion** - Apply the recommended fix
+- **Preview Diff** - Preview changes before applying
 - **Mark as False Positive** - Report incorrect detections
 - **Mark as Helpful** - Provide positive feedback
-- **Mark as Not Helpful** - Report unhelpful suggestions
+
+## Supported Languages
+
+| Category | Languages | Features |
+|----------|-----------|----------|
+| **Web** | JavaScript, TypeScript | XSS, SQL injection, DOM-based attacks |
+| **Frontend Frameworks** | Vue.js, Svelte | v-html XSS, @html directive, SSR security |
+| **Backend** | Python, Java, Go, PHP, Ruby | Injection, deserialization, auth issues |
+| **JVM** | Kotlin, Scala | Play Framework, Akka, Spark security |
+| **Systems** | C, C++, Rust | Buffer overflow, memory safety |
+| **Mobile** | Swift, Objective-C, Dart | Keychain security, ATS compliance, WebView |
+| **Enterprise** | C# | .NET-specific vulnerabilities |
+| **Blockchain** | Solidity | Reentrancy, overflow, access control (30+ patterns) |
+
+## Infrastructure Security
+
+### Dockerfile Security (CIS Docker Benchmark)
+
+- Insecure base image detection (`latest` tag)
+- Root user warnings
+- Exposed secrets in ENV/ARG
+- Missing HEALTHCHECK
+- Unnecessary ADD usage
+- Shell form CMD detection
+
+### Kubernetes Security (CIS Benchmark + NSA/CISA Guide)
+
+- Privileged container detection
+- Missing security contexts
+- Host namespace sharing
+- Dangerous capabilities
+- Missing resource limits
+- Default service accounts
+
+### Terraform Security
+
+- Open security groups (0.0.0.0/0)
+- Public S3 buckets
+- Disabled encryption
+- Hardcoded secrets
+- Missing logging
+
+### CloudFormation Security
+
+- Misconfigured IAM policies
+- Public resources
+- Missing encryption settings
+- Security group misconfigurations
 
 ## Development
 
@@ -234,36 +316,8 @@ npm run watch
 # Run tests
 npm test
 
-# Run tests with coverage
-npm run test:coverage
-
-# Lint code
-npm run lint
-
-# Format code
-npm run format
-
 # Package extension
 npm run package
-```
-
-### Testing
-
-The extension includes comprehensive test coverage:
-
-- Unit tests for all services
-- Integration tests for VS Code API
-- Mock implementations for testing without backend
-
-```bash
-# Run all tests
-npm test
-
-# Run specific test suite
-npm test -- --grep "ConfigurationService"
-
-# Run with coverage
-npm run test:coverage
 ```
 
 ## Architecture
@@ -271,17 +325,19 @@ npm run test:coverage
 ### Core Services
 
 - **CodeAnalysisService** - API communication and request management
+- **ContainerIaCService** - Infrastructure security scanning
+- **RefactoringService** - AI-powered code improvements
 - **ConfigurationService** - Settings management with validation
 - **Logger** - Centralized logging with PII anonymization
 - **SecurityService** - Secure credential storage and input sanitization
-- **TelemetryService** - Privacy-aware usage analytics
 
-### Design Patterns
+### Tree Providers
 
-- **Circuit Breaker** - Prevents cascading failures
-- **Priority Queue** - FIFO ordering within same priority
-- **Retry Logic** - Exponential backoff with configurable attempts
-- **Debouncing** - 300ms debounce for diagnostic updates
+- **IssueTreeProvider** - Security issues view
+- **CVETreeProvider** - CVE database view
+- **RefactoringTreeProvider** - Refactoring suggestions view
+- **SCATreeProvider** - Dependencies view
+- **ContainerIaCTreeProvider** - Infrastructure security view
 
 ### Project Structure
 
@@ -290,10 +346,18 @@ src/
 ├── commands/           # Command implementations
 ├── interfaces/         # TypeScript interfaces
 ├── providers/          # Tree view and code action providers
-├── services/          # Core business logic
-├── test/              # Test suites
-├── utils/             # Utility functions
-└── extension.ts       # Extension entry point
+│   ├── issue-tree-provider.ts
+│   ├── cve-tree-provider.ts
+│   ├── refactoring-tree-provider.ts
+│   ├── sca-tree-provider.ts
+│   └── container-iac-tree-provider.ts
+├── services/           # Core business logic
+│   ├── code-analysis-service.ts
+│   ├── container-iac-service.ts
+│   └── refactoring-service.ts
+├── test/               # Test suites
+├── utils/              # Utility functions
+└── extension.ts        # Extension entry point
 ```
 
 ## Troubleshooting
@@ -306,7 +370,7 @@ src/
 
 **Solution**:
 
-1. Check that you're working with supported languages (JavaScript, TypeScript, Python, Java, Go, Rust, C/C++, C#, PHP, Ruby)
+1. Check that you're working with supported languages (see language support section)
 2. Reload VS Code window (`Developer: Reload Window`)
 3. Check Output panel (`View → Output → Jokalala Code Analysis`) for errors
 
@@ -328,22 +392,10 @@ src/
 
 **Solution**:
 
-1. Check that the file size is within limits (default: 1MB)
+1. Check that the file size is within limits (default: 200KB)
 2. Verify the analysis mode is set to 'full' for comprehensive analysis
 3. Check the Output panel for API response details
 4. Clear cache and re-analyze (`Jokalala: Clear Cache`)
-
-#### Performance Issues
-
-**Problem**: Extension is slow or unresponsive
-
-**Solution**:
-
-1. Enable caching to reduce API calls
-2. Increase cache TTL for longer-lived results
-3. Use 'quick' analysis mode for faster results
-4. Reduce `maxProjectFiles` for large projects
-5. Disable auto-analyze and analyze manually
 
 ### Debug Mode
 
@@ -421,6 +473,7 @@ See [CHANGELOG.md](CHANGELOG.md) for a list of changes in each version.
 
 - Built with [VS Code Extension API](https://code.visualstudio.com/api)
 - Powered by Jokalala AI Code Analysis Platform
+- Security patterns based on OWASP, CWE, SWC Registry, CIS Benchmarks
 - Icons from [VS Code Codicons](https://microsoft.github.io/vscode-codicons/dist/codicon.html)
 
 ---
