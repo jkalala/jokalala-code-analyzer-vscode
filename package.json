@@ -250,8 +250,9 @@
     "vscode:prepublish": "pnpm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "lint": "pnpm exec tsc --noEmit -p tsconfig.json && pnpm exec tsc -p tsconfig.test.json",
     "pretest": "pnpm run compile",
-    "test": "node ./out/test/runTest.js",
+    "test": "pnpm run lint",
     "package": "vsce package",
     "publish": "vsce publish"
   },
