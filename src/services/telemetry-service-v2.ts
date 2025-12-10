@@ -94,7 +94,7 @@ export class TelemetryServiceV2 {
     for (const [k, v] of Object.entries(props)) {
       if (piiPatterns.test(k)) {
         result[k] = '[REDACTED]'
-      } else if (typeof v === 'string' && (v.includes('/') || v.includes('\'))) {
+      } else if (typeof v === 'string' && (v.includes('/') || v.includes('\\'))) {
         result[k] = '<path>'
       } else {
         result[k] = v
@@ -105,7 +105,7 @@ export class TelemetryServiceV2 {
 
   private sanitize(msg: string): string {
     return msg
-      .replace(/[a-zA-Z]:\[^\s]+/g, '<path>')
+      .replace(/[a-zA-Z]:\\[^\s]+/g, '<path>')
       .replace(/\/[^\s]+/g, '<path>')
       .replace(/[a-zA-Z0-9_-]{32,}/g, '<token>')
       .substring(0, 500)
