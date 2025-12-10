@@ -107,7 +107,7 @@ export class RateLimiter {
     }
 
     throw new RateLimitError(
-      \`Rate limited. Wait \${Math.ceil(this.getTimeUntilNextToken() / 1000)}s\`,
+      `Rate limited. Wait ${Math.ceil(this.getTimeUntilNextToken() / 1000)}s`,
       this.getTimeUntilNextToken()
     )
   }
