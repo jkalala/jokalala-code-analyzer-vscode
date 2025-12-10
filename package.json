@@ -2,7 +2,7 @@
   "name": "jokalala-code-analysis",
   "displayName": "Jokalala Code Analyzer",
   "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 19 languages. Now with Container/IaC security scanning and SCA.",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "publisher": "jokalala",
   "author": {
     "name": "Jokalala Team",
