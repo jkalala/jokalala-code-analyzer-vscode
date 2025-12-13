@@ -1,0 +1,641 @@
+{
+  "name": "jokalala-code-analysis",
+  "displayName": "Jokalala Code Analyzer",
+  "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 10+ languages.",
+  "version": "2.3.0",
+  "publisher": "jokalala",
+  "author": {
+    "name": "Jokalala Team",
+    "email": "team@jokalala.com",
+    "url": "https://jokalala.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jkalala/jokalala-code-analyzer-vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jkalala/jokalala-code-analyzer-vscode/issues",
+    "email": "support@jokalala.com"
+  },
+  "homepage": "https://github.com/jkalala/jokalala-code-analyzer-vscode#readme",
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "badges": [
+    {
+      "url": "https://img.shields.io/github/license/jkalala/jokalala-code-analyzer-vscode",
+      "href": "https://github.com/jkalala/jokalala-code-analyzer-vscode/blob/main/LICENSE",
+      "description": "License"
+    },
+    {
+      "url": "https://img.shields.io/visual-studio-marketplace/v/jokalala.jokalala-code-analysis",
+      "href": "https://marketplace.visualstudio.com/items?itemName=jokalala.jokalala-code-analysis",
+      "description": "VS Code Marketplace Version"
+    },
+    {
+      "url": "https://img.shields.io/visual-studio-marketplace/d/jokalala.jokalala-code-analysis",
+      "href": "https://marketplace.visualstudio.com/items?itemName=jokalala.jokalala-code-analysis",
+      "description": "Downloads"
+    }
+  ],
+  "qna": "https://github.com/jkalala/jokalala-code-analyzer-vscode/discussions",
+  "sponsor": {
+    "url": "https://github.com/sponsors/jkalala"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "security",
+    "vulnerability",
+    "code-analysis",
+    "static-analysis",
+    "sast",
+    "sql-injection",
+    "xss",
+    "owasp",
+    "ai",
+    "machine-learning",
+    "devsecops",
+    "secure-coding"
+  ],
+  "activationEvents": [
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:python",
+    "onLanguage:java",
+    "onLanguage:go",
+    "onLanguage:rust",
+    "onLanguage:cpp",
+    "onLanguage:c",
+    "onLanguage:csharp",
+    "onLanguage:php",
+    "onLanguage:ruby",
+    "onLanguage:dockerfile",
+    "onLanguage:yaml",
+    "onLanguage:terraform",
+    "onLanguage:json",
+    "workspaceContains:**/Dockerfile*",
+    "workspaceContains:**/docker-compose*.yml",
+    "workspaceContains:**/*.tf",
+    "workspaceContains:**/kubernetes/*.yaml"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "jokalala-code-analysis.analyzeFile",
+        "title": "Jokalala: Analyze Current File",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "jokalala-code-analysis.analyzeSelection",
+        "title": "Jokalala: Analyze Selection",
+        "icon": "$(selection)"
+      },
+      {
+        "command": "jokalala-code-analysis.analyzeProject",
+        "title": "Jokalala: Analyze Entire Project",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "jokalala-code-analysis.clearCache",
+        "title": "Jokalala: Clear Analysis Cache",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "jokalala-code-analysis.showSettings",
+        "title": "Jokalala: Open Settings",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "jokalala-code-analysis.goToIssue",
+        "title": "Go to Issue Location",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "jokalala-code-analysis.toggleViewMode",
+        "title": "Jokalala: Toggle Issues View Mode",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "jokalala.searchCVE",
+        "title": "Jokalala: Search CVE/CWE Database",
+        "icon": "$(search)"
+      },
+      {
+        "command": "jokalala.scanForCVEs",
+        "title": "Jokalala: Scan Current File for CVEs",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "jokalala.showCVEDetails",
+        "title": "Show CVE Details",
+        "icon": "$(info)"
+      },
+      {
+        "command": "jokalala.applyCVEFix",
+        "title": "Apply CVE Fix",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "jokalala.clearCVEResults",
+        "title": "Jokalala: Clear CVE Results",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "jokalala.analyzeRefactoring",
+        "title": "Jokalala: Analyze for Refactoring",
+        "icon": "$(lightbulb)"
+      },
+      {
+        "command": "jokalala.quickFix",
+        "title": "Jokalala: Quick Fix Issue",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "jokalala.batchRefactor",
+        "title": "Jokalala: Apply All Safe Fixes",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "jokalala.showRefactoringDetails",
+        "title": "Show Refactoring Details",
+        "icon": "$(info)"
+      },
+      {
+        "command": "jokalala.applyRefactoringFix",
+        "title": "Apply Refactoring Fix",
+        "icon": "$(check)"
+      },
+      {
+        "command": "jokalala.previewRefactoringDiff",
+        "title": "Preview Refactoring Changes",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "jokalala.clearRefactoringResults",
+        "title": "Jokalala: Clear Refactoring Results",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "jokalala.scanDependencies",
+        "title": "Jokalala: Scan Dependencies (SCA)",
+        "icon": "$(package)"
+      },
+      {
+        "command": "jokalala.generateSBOM",
+        "title": "Jokalala: Generate SBOM",
+        "icon": "$(file-text)"
+      },
+      {
+        "command": "jokalala.checkLicenses",
+        "title": "Jokalala: Check License Compliance",
+        "icon": "$(law)"
+      },
+      {
+        "command": "jokalala.showSCAVulnerabilityDetails",
+        "title": "Show Vulnerability Details",
+        "icon": "$(info)"
+      },
+      {
+        "command": "jokalala.clearSCAResults",
+        "title": "Jokalala: Clear SCA Results",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "jokalala.scanContainerIaC",
+        "title": "Jokalala: Scan Container/IaC Files",
+        "icon": "$(server)"
+      },
+      {
+        "command": "jokalala.scanDockerfiles",
+        "title": "Jokalala: Scan Dockerfiles",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "jokalala.scanKubernetes",
+        "title": "Jokalala: Scan Kubernetes Manifests",
+        "icon": "$(server)"
+      },
+      {
+        "command": "jokalala.scanTerraform",
+        "title": "Jokalala: Scan Terraform Files",
+        "icon": "$(cloud)"
+      },
+      {
+        "command": "jokalala.scanCurrentContainerFile",
+        "title": "Jokalala: Scan Current Container/IaC File",
+        "icon": "$(file)"
+      },
+      {
+        "command": "jokalala.goToContainerIaCIssue",
+        "title": "Go to Issue",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "jokalala.showContainerIaCIssueDetails",
+        "title": "Show Issue Details",
+        "icon": "$(info)"
+      },
+      {
+        "command": "jokalala.toggleContainerIaCViewMode",
+        "title": "Toggle View Mode",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "jokalala.clearContainerIaCResults",
+        "title": "Jokalala: Clear Container/IaC Results",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "jokalala.createPlugin",
+        "title": "Jokalala: Create New Plugin",
+        "icon": "$(add)"
+      },
+      {
+        "command": "jokalala.importRules",
+        "title": "Jokalala: Import Custom Rules",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "jokalala.exportRules",
+        "title": "Jokalala: Export Custom Rules",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "jokalala.reloadPlugins",
+        "title": "Jokalala: Reload Plugins",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "jokalala.openPluginsFolder",
+        "title": "Jokalala: Open Plugins Folder",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "jokalala.enablePlugin",
+        "title": "Enable Plugin",
+        "icon": "$(check)"
+      },
+      {
+        "command": "jokalala.disablePlugin",
+        "title": "Disable Plugin",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "jokalala.enableRule",
+        "title": "Enable Rule",
+        "icon": "$(check)"
+      },
+      {
+        "command": "jokalala.disableRule",
+        "title": "Disable Rule",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "jokalala.showRuleDetails",
+        "title": "Show Rule Details",
+        "icon": "$(info)"
+      },
+      {
+        "command": "jokalala.testRule",
+        "title": "Test Rule",
+        "icon": "$(beaker)"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "jokalala-code-analysis.analyzeFile",
+          "group": "jokalala@1",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "jokalala-code-analysis.analyzeSelection",
+          "group": "jokalala@2",
+          "when": "editorHasSelection"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "jokalala-code-analysis.analyzeProject",
+          "group": "jokalala@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "jokalala-code-analysis.toggleViewMode",
+          "when": "view == jokalala-issues",
+          "group": "navigation"
+        },
+        {
+          "command": "jokalala-code-analysis.analyzeProject",
+          "when": "view == jokalala-issues",
+          "group": "navigation"
+        },
+        {
+          "command": "jokalala.searchCVE",
+          "when": "view == jokalala-cve",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jokalala.scanForCVEs",
+          "when": "view == jokalala-cve",
+          "group": "navigation@2"
+        },
+        {
+          "command": "jokalala.clearCVEResults",
+          "when": "view == jokalala-cve",
+          "group": "navigation@3"
+        },
+        {
+          "command": "jokalala.analyzeRefactoring",
+          "when": "view == jokalala-refactoring",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jokalala.batchRefactor",
+          "when": "view == jokalala-refactoring",
+          "group": "navigation@2"
+        },
+        {
+          "command": "jokalala.clearRefactoringResults",
+          "when": "view == jokalala-refactoring",
+          "group": "navigation@3"
+        },
+        {
+          "command": "jokalala.scanDependencies",
+          "when": "view == jokalala-sca",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jokalala.generateSBOM",
+          "when": "view == jokalala-sca",
+          "group": "navigation@2"
+        },
+        {
+          "command": "jokalala.checkLicenses",
+          "when": "view == jokalala-sca",
+          "group": "navigation@3"
+        },
+        {
+          "command": "jokalala.clearSCAResults",
+          "when": "view == jokalala-sca",
+          "group": "navigation@4"
+        },
+        {
+          "command": "jokalala.scanContainerIaC",
+          "when": "view == jokalala-container-iac",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jokalala.scanCurrentContainerFile",
+          "when": "view == jokalala-container-iac",
+          "group": "navigation@2"
+        },
+        {
+          "command": "jokalala.toggleContainerIaCViewMode",
+          "when": "view == jokalala-container-iac",
+          "group": "navigation@3"
+        },
+        {
+          "command": "jokalala.clearContainerIaCResults",
+          "when": "view == jokalala-container-iac",
+          "group": "navigation@4"
+        },
+        {
+          "command": "jokalala.createPlugin",
+          "when": "view == jokalala-plugins",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jokalala.importRules",
+          "when": "view == jokalala-plugins",
+          "group": "navigation@2"
+        },
+        {
+          "command": "jokalala.exportRules",
+          "when": "view == jokalala-plugins",
+          "group": "navigation@3"
+        },
+        {
+          "command": "jokalala.reloadPlugins",
+          "when": "view == jokalala-plugins",
+          "group": "navigation@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "jokalala.applyRefactoringFix",
+          "when": "view == jokalala-refactoring && viewItem == refactoringIssue-fixable",
+          "group": "inline@1"
+        },
+        {
+          "command": "jokalala.previewRefactoringDiff",
+          "when": "view == jokalala-refactoring && viewItem =~ /^refactoringIssue/",
+          "group": "inline@2"
+        },
+        {
+          "command": "jokalala.enablePlugin",
+          "when": "view == jokalala-plugins && viewItem == plugin-disabled",
+          "group": "inline@1"
+        },
+        {
+          "command": "jokalala.disablePlugin",
+          "when": "view == jokalala-plugins && viewItem == plugin-enabled",
+          "group": "inline@1"
+        },
+        {
+          "command": "jokalala.enableRule",
+          "when": "view == jokalala-plugins && viewItem == rule-disabled",
+          "group": "inline@1"
+        },
+        {
+          "command": "jokalala.disableRule",
+          "when": "view == jokalala-plugins && viewItem == rule-enabled",
+          "group": "inline@1"
+        },
+        {
+          "command": "jokalala.showRuleDetails",
+          "when": "view == jokalala-plugins && viewItem =~ /^rule-/",
+          "group": "inline@2"
+        },
+        {
+          "command": "jokalala.testRule",
+          "when": "view == jokalala-plugins && viewItem =~ /^rule-/",
+          "group": "inline@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Jokalala Code Analysis",
+      "properties": {
+        "jokalala.apiEndpoint": {
+          "type": "string",
+          "default": "http://localhost:3000/api/agents/dev-assistant",
+          "description": "API endpoint for code analysis service"
+        },
+        "jokalala.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for authentication (optional)",
+          "deprecationMessage": "This setting is deprecated. Use the 'Jokalala: Set API Key' command instead, which stores your key securely using VS Code's SecretStorage."
+        },
+        "jokalala.analysisMode": {
+          "type": "string",
+          "enum": [
+            "quick",
+            "deep",
+            "full"
+          ],
+          "default": "full",
+          "description": "Analysis mode: quick (static only), deep (LLM only), full (both)"
+        },
+        "jokalala.autoAnalyze": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically analyze files on save"
+        },
+        "jokalala.showInlineWarnings": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline warnings in editor"
+        },
+        "jokalala.enableDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable VS Code diagnostics integration"
+        },
+        "jokalala.maxFileSize": {
+          "type": "number",
+          "default": 200000,
+          "description": "Maximum file size to analyze (in characters). Default: 200KB - industry standard"
+        },
+        "jokalala.maxProjectFiles": {
+          "type": "number",
+          "default": 40,
+          "description": "Maximum number of files included in a project analysis run"
+        },
+        "jokalala.maxProjectFileSize": {
+          "type": "number",
+          "default": 120000,
+          "description": "Maximum size (characters) for each file included in project analysis"
+        },
+        "jokalala.requestTimeout": {
+          "type": "number",
+          "default": 60000,
+          "description": "Timeout (ms) for individual analysis requests"
+        },
+        "jokalala.enableTelemetry": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow the extension to send anonymous diagnostics (session + machine identifiers)"
+        },
+        "jokalala.plugins.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the plugin system for custom rules and extensions"
+        },
+        "jokalala.plugins.additionalPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional paths to search for plugins"
+        },
+        "jokalala.plugins.autoUpdate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically update plugins when new versions are available"
+        },
+        "jokalala.plugins.trustedPublishers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "jokalala",
+            "official"
+          ],
+          "description": "List of trusted plugin publishers (plugins from trusted publishers load without confirmation)"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "jokalala-code-analysis",
+          "title": "Jokalala Code Analysis",
+          "icon": "$(bug)"
+        }
+      ]
+    },
+    "views": {
+      "jokalala-code-analysis": [
+        {
+          "id": "jokalala-issues",
+          "name": "Issues"
+        },
+        {
+          "id": "jokalala-cve",
+          "name": "CVE Database"
+        },
+        {
+          "id": "jokalala-recommendations",
+          "name": "Recommendations"
+        },
+        {
+          "id": "jokalala-metrics",
+          "name": "Code Metrics"
+        },
+        {
+          "id": "jokalala-refactoring",
+          "name": "Refactoring"
+        },
+        {
+          "id": "jokalala-sca",
+          "name": "Dependencies (SCA)"
+        },
+        {
+          "id": "jokalala-container-iac",
+          "name": "Container & IaC Security"
+        },
+        {
+          "id": "jokalala-plugins",
+          "name": "Plugins & Custom Rules"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "pnpm run compile",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.3.8",
+    "typescript": "^5.3.3",
+    "vsce": "^2.15.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.5"
+  }
+}
