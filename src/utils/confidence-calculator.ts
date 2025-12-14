@@ -136,9 +136,6 @@ export class ConfidenceCalculator {
     vuln: V2Vulnerability,
     context: CodeContext
   ): ConfidenceBreakdown {
-    // Start with reported confidence or default
-    const baseConfidence = vuln.confidence ?? 0.7
-
     // Calculate individual factors
     const patternMatch = this.calculatePatternScore(vuln)
     const contextRelevance = this.analyzeContext(vuln, context)
@@ -332,14 +329,16 @@ export class ConfidenceCalculator {
    * Get historical accuracy for vulnerability type
    */
   private getHistoricalAccuracy(vulnType: string | undefined): number {
+    const defaultAccuracy = HISTORICAL_ACCURACY['default'] ?? 0.7
+
     if (!vulnType) {
-      return HISTORICAL_ACCURACY['default']
+      return defaultAccuracy
     }
 
     const normalizedType = vulnType.toLowerCase().replace(/[_-]/g, '_')
 
     // Check for exact match
-    if (HISTORICAL_ACCURACY[normalizedType]) {
+    if (HISTORICAL_ACCURACY[normalizedType] !== undefined) {
       return HISTORICAL_ACCURACY[normalizedType]
     }
 
@@ -350,7 +349,7 @@ export class ConfidenceCalculator {
       }
     }
 
-    return HISTORICAL_ACCURACY['default']
+    return defaultAccuracy
   }
 
   /**

@@ -353,7 +353,7 @@ export class SCAService {
       throw new Error(`API request failed: ${response.status} ${response.statusText}`)
     }
 
-    const data = await response.json() as { success: boolean; error?: { message: string }; data: any }
+    const data = await response.json()
 
     if (!data.success) {
       throw new Error(data.error?.message || 'SCA scan failed')
@@ -431,7 +431,7 @@ export class SCAService {
       throw new Error(`API request failed: ${response.status} ${response.statusText}`)
     }
 
-    const data = await response.json() as { success: boolean; error?: { message: string }; data: any }
+    const data = await response.json()
 
     if (!data.success) {
       throw new Error(data.error?.message || 'SBOM generation failed')
@@ -443,7 +443,7 @@ export class SCAService {
     return {
       success: true,
       format,
-      content: (data as any).sbom,
+      content: data.sbom,
       filename: `${workspaceName}.${extension}`,
     }
   }

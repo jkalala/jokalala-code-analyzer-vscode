@@ -19,6 +19,7 @@ import { CVETreeProvider, registerCVETreeView } from './providers/cve-tree-provi
 import { RefactoringTreeProvider, registerRefactoringTreeView } from './providers/refactoring-tree-provider'
 import { SCATreeProvider, registerSCATreeView } from './providers/sca-tree-provider'
 import { ContainerIaCTreeProvider, registerContainerIaCTreeView } from './providers/container-iac-tree-provider'
+import { PluginsTreeProvider, registerPluginsTreeView, registerPluginCommands } from './providers/plugins-tree-provider'
 import { registerEnhancedCodeActionProvider } from './providers/enhanced-code-action-provider'
 import { CodeAnalysisService } from './services/code-analysis-service'
 import { ConfigurationService } from './services/configuration-service'
@@ -29,7 +30,6 @@ import { RefactoringService, RefactoringIssue } from './services/refactoring-ser
 import { SCAService, SCAVulnerability } from './services/sca-service'
 import { ContainerIaCService, ContainerIaCIssue, ScanType } from './services/container-iac-service'
 import { userFeedbackService } from './services/user-feedback-service'
-import { PluginManager } from './services/plugin-manager'
 import { qualityGate } from './utils/quality-gate'
 import { falsePositiveDetector } from './utils/false-positive-detector'
 import { intelligencePrioritizer } from './utils/intelligence-prioritizer'
@@ -48,7 +48,7 @@ let scaTreeProvider: SCATreeProvider
 let scaService: SCAService
 let containerIaCTreeProvider: ContainerIaCTreeProvider
 let containerIaCService: ContainerIaCService
-let pluginManager: PluginManager
+let pluginsTreeProvider: PluginsTreeProvider
 let logger: Logger
 let statusBarItem: vscode.StatusBarItem
 
@@ -71,6 +71,7 @@ export async function activate(context: vscode.ExtensionContext) {
     scaService = new SCAService(configurationService, logger)
     containerIaCTreeProvider = new ContainerIaCTreeProvider()
     containerIaCService = new ContainerIaCService(configurationService, logger)
+    pluginsTreeProvider = new PluginsTreeProvider()
 
     await ensurePersistentIdentifiers(context)
 
@@ -134,17 +135,13 @@ export async function activate(context: vscode.ExtensionContext) {
   const containerIaCTreeView = registerContainerIaCTreeView(context, containerIaCTreeProvider)
   context.subscriptions.push(containerIaCTreeView)
 
-  console.log('Jokalala: Tree views created and registered')
+  // Register Plugins & Custom Rules tree view
+  await pluginsTreeProvider.initialize(context)
+  const pluginsTreeView = registerPluginsTreeView(context, pluginsTreeProvider)
+  context.subscriptions.push(pluginsTreeView)
+  registerPluginCommands(context, pluginsTreeProvider)
 
-  // Initialize Plugin Manager and load plugins
-  pluginManager = new PluginManager(context, logger)
-  try {
-    await pluginManager.discoverAndLoadPlugins()
-    await pluginManager.activateAllPlugins()
-    logger.info('Plugins loaded and activated')
-  } catch (error) {
-    logger.warn('Plugin loading failed, continuing without plugins', error as Error)
-  }
+  console.log('Jokalala: Tree views created and registered')
 
   // Register enhanced code action provider for one-click fixes
   registerEnhancedCodeActionProvider(context)
@@ -1298,7 +1295,6 @@ function showSettings() {
 }
 
 export function deactivate() {
-  pluginManager?.dispose()
   diagnosticsManager?.dispose()
   logger?.dispose()
 }
@@ -1464,11 +1460,6 @@ function handleAnalysisSuccess(
   )
   recommendationsTreeProvider.updateRecommendations(recommendations)
   metricsTreeProvider.updateMetrics(result.summary)
-
-  // Notify plugins of analysis completion
-  if (pluginManager) {
-    pluginManager.notifyAnalysisComplete(issues)
-  }
 
   // Show different summary based on V2 availability and quality
   if (v2QualityPassed && processedV2Report) {

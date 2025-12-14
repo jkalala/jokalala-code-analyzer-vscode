@@ -1,0 +1,4 @@
+{
+  "message": "fix: replace pnpm with npm in scripts for broader compatibility",
+  "sha": "ba6da2bb0eff3a39ac04946d47505ac10760f1c0"
+}

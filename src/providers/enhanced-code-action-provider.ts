@@ -68,7 +68,7 @@ export class EnhancedCodeActionProvider implements vscode.CodeActionProvider {
    */
   provideCodeActions(
     document: vscode.TextDocument,
-    range: vscode.Range | vscode.Selection,
+    _range: vscode.Range | vscode.Selection,
     context: vscode.CodeActionContext,
     _token: vscode.CancellationToken
   ): vscode.CodeAction[] {
@@ -204,7 +204,7 @@ export class EnhancedCodeActionProvider implements vscode.CodeActionProvider {
   private createFixEdit(
     document: vscode.TextDocument,
     diagnostic: vscode.Diagnostic,
-    vuln: V2Vulnerability,
+    _vuln: V2Vulnerability,
     fix: V2Fix
   ): vscode.WorkspaceEdit | undefined {
     if (!fix.vulnerableCode || !fix.secureCode) {
@@ -385,7 +385,7 @@ export class EnhancedCodeActionProvider implements vscode.CodeActionProvider {
    * Create basic actions for diagnostics without V2 data
    */
   private createBasicActions(
-    document: vscode.TextDocument,
+    _document: vscode.TextDocument,
     diagnostic: vscode.Diagnostic
   ): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = []
@@ -518,7 +518,7 @@ export function registerCodeActionCommands(
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'jokalala.previewFix',
-      async (vulnId: string, fix: V2Fix) => {
+      async (_vulnId: string, fix: V2Fix) => {
         const panel = vscode.window.createWebviewPanel(
           'fixPreview',
           `Fix Preview: ${fix.quickSummary}`,
@@ -535,7 +535,7 @@ export function registerCodeActionCommands(
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'jokalala.showAlternative',
-      async (vulnId: string, alternative: NonNullable<V2Fix['alternatives']>[number]) => {
+      async (_vulnId: string, alternative: NonNullable<V2Fix['alternatives']>[number]) => {
         const result = await vscode.window.showInformationMessage(
           `Alternative: ${alternative.approach}`,
           { modal: true, detail: `Pros: ${alternative.pros.join(', ')}\nCons: ${alternative.cons.join(', ')}` },

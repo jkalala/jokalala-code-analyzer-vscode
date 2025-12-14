@@ -17,7 +17,7 @@
     "noImplicitThis": true,
     "alwaysStrict": true,
 
-    // Additional Checks - relaxed for v2.0.0 release
+    // Additional Checks
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitReturns": true,
@@ -40,5 +40,5 @@
     "useDefineForClassFields": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", ".vscode-test", "dist", "src/test"]
+  "exclude": ["node_modules", ".vscode-test", "dist"]
 }

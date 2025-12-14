@@ -19,7 +19,7 @@ export interface PrioritizedVulnerability extends V2Vulnerability {
   priorityScore: number          // 0-100 priority score
   priorityLevel: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'
   priorityFactors: PriorityFactors
-  urgencyReason?: string         // Why this is urgent
+  urgencyReason?: string | undefined         // Why this is urgent
 }
 
 /**

@@ -1,8 +1,8 @@
 {
   "name": "jokalala-code-analysis",
   "displayName": "Jokalala Code Analyzer",
-  "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 19 languages. Now with Plugin System, GitHub Integration, Container/IaC security scanning and SCA.",
-  "version": "2.2.0",
+  "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 10+ languages.",
+  "version": "2.3.0",
   "publisher": "jokalala",
   "author": {
     "name": "Jokalala Team",
@@ -66,9 +66,7 @@
     "ai",
     "machine-learning",
     "devsecops",
-    "secure-coding",
-    "github-integration",
-    "plugin-system"
+    "secure-coding"
   ],
   "activationEvents": [
     "onLanguage:javascript",
@@ -260,63 +258,59 @@
         "icon": "$(clear-all)"
       },
       {
-        "command": "jokalala.github.authenticate",
-        "title": "Jokalala GitHub: Sign In",
-        "icon": "$(sign-in)",
-        "category": "Jokalala GitHub"
+        "command": "jokalala.createPlugin",
+        "title": "Jokalala: Create New Plugin",
+        "icon": "$(add)"
       },
       {
-        "command": "jokalala.github.createIssue",
-        "title": "Jokalala GitHub: Create Issue from Finding",
-        "icon": "$(issue-opened)",
-        "category": "Jokalala GitHub"
+        "command": "jokalala.importRules",
+        "title": "Jokalala: Import Custom Rules",
+        "icon": "$(cloud-download)"
       },
       {
-        "command": "jokalala.github.createIssuesFromFindings",
-        "title": "Jokalala GitHub: Create Issues from All Findings",
-        "icon": "$(issues)",
-        "category": "Jokalala GitHub"
+        "command": "jokalala.exportRules",
+        "title": "Jokalala: Export Custom Rules",
+        "icon": "$(cloud-upload)"
       },
       {
-        "command": "jokalala.github.linkToPR",
-        "title": "Jokalala GitHub: Link Finding to PR",
-        "icon": "$(git-pull-request)",
-        "category": "Jokalala GitHub"
+        "command": "jokalala.reloadPlugins",
+        "title": "Jokalala: Reload Plugins",
+        "icon": "$(refresh)"
       },
       {
-        "command": "jokalala.github.viewIssues",
-        "title": "Jokalala GitHub: View Created Issues",
-        "icon": "$(list-unordered)",
-        "category": "Jokalala GitHub"
+        "command": "jokalala.openPluginsFolder",
+        "title": "Jokalala: Open Plugins Folder",
+        "icon": "$(folder-opened)"
       },
       {
-        "command": "jokalala.github.syncStatus",
-        "title": "Jokalala GitHub: Sync Issue Status",
-        "icon": "$(sync)",
-        "category": "Jokalala GitHub"
+        "command": "jokalala.enablePlugin",
+        "title": "Enable Plugin",
+        "icon": "$(check)"
       },
       {
-        "command": "jokalala.github.refreshTree",
-        "title": "Jokalala GitHub: Refresh",
-        "icon": "$(refresh)",
-        "category": "Jokalala GitHub"
+        "command": "jokalala.disablePlugin",
+        "title": "Disable Plugin",
+        "icon": "$(circle-slash)"
       },
       {
-        "command": "jokalala.github.logout",
-        "title": "Jokalala GitHub: Sign Out",
-        "icon": "$(sign-out)",
-        "category": "Jokalala GitHub"
+        "command": "jokalala.enableRule",
+        "title": "Enable Rule",
+        "icon": "$(check)"
       },
       {
-        "command": "jokalala.github.openInGitHub",
-        "title": "Open in GitHub",
-        "icon": "$(link-external)"
+        "command": "jokalala.disableRule",
+        "title": "Disable Rule",
+        "icon": "$(circle-slash)"
       },
       {
-        "command": "jokalala.managePlugins",
-        "title": "Jokalala: Manage Plugins",
-        "icon": "$(extensions)",
-        "category": "Jokalala"
+        "command": "jokalala.showRuleDetails",
+        "title": "Show Rule Details",
+        "icon": "$(info)"
+      },
+      {
+        "command": "jokalala.testRule",
+        "title": "Test Rule",
+        "icon": "$(beaker)"
       }
     ],
     "menus": {
@@ -420,23 +414,23 @@
           "group": "navigation@4"
         },
         {
-          "command": "jokalala.github.authenticate",
-          "when": "view == jokalala-github",
+          "command": "jokalala.createPlugin",
+          "when": "view == jokalala-plugins",
           "group": "navigation@1"
         },
         {
-          "command": "jokalala.github.createIssuesFromFindings",
-          "when": "view == jokalala-github",
+          "command": "jokalala.importRules",
+          "when": "view == jokalala-plugins",
           "group": "navigation@2"
         },
         {
-          "command": "jokalala.github.syncStatus",
-          "when": "view == jokalala-github",
+          "command": "jokalala.exportRules",
+          "when": "view == jokalala-plugins",
           "group": "navigation@3"
         },
         {
-          "command": "jokalala.github.refreshTree",
-          "when": "view == jokalala-github",
+          "command": "jokalala.reloadPlugins",
+          "when": "view == jokalala-plugins",
           "group": "navigation@4"
         }
       ],
@@ -450,6 +444,36 @@
           "command": "jokalala.previewRefactoringDiff",
           "when": "view == jokalala-refactoring && viewItem =~ /^refactoringIssue/",
           "group": "inline@2"
+        },
+        {
+          "command": "jokalala.enablePlugin",
+          "when": "view == jokalala-plugins && viewItem == plugin-disabled",
+          "group": "inline@1"
+        },
+        {
+          "command": "jokalala.disablePlugin",
+          "when": "view == jokalala-plugins && viewItem == plugin-enabled",
+          "group": "inline@1"
+        },
+        {
+          "command": "jokalala.enableRule",
+          "when": "view == jokalala-plugins && viewItem == rule-disabled",
+          "group": "inline@1"
+        },
+        {
+          "command": "jokalala.disableRule",
+          "when": "view == jokalala-plugins && viewItem == rule-enabled",
+          "group": "inline@1"
+        },
+        {
+          "command": "jokalala.showRuleDetails",
+          "when": "view == jokalala-plugins && viewItem =~ /^rule-/",
+          "group": "inline@2"
+        },
+        {
+          "command": "jokalala.testRule",
+          "when": "view == jokalala-plugins && viewItem =~ /^rule-/",
+          "group": "inline@3"
         }
       ]
     },
@@ -517,58 +541,34 @@
           "default": true,
           "description": "Allow the extension to send anonymous diagnostics (session + machine identifiers)"
         },
-        "jokalala.github.enabled": {
+        "jokalala.plugins.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable GitHub integration plugin"
+          "description": "Enable the plugin system for custom rules and extensions"
         },
-        "jokalala.github.autoCreateIssues": {
+        "jokalala.plugins.additionalPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional paths to search for plugins"
+        },
+        "jokalala.plugins.autoUpdate": {
           "type": "boolean",
           "default": false,
-          "description": "Automatically create GitHub issues for high-severity findings"
+          "description": "Automatically update plugins when new versions are available"
         },
-        "jokalala.github.autoCreateSeverityThreshold": {
-          "type": "string",
-          "enum": ["critical", "high", "medium", "low", "info"],
-          "default": "high",
-          "description": "Minimum severity for auto-creating issues"
-        },
-        "jokalala.github.issueLabels": {
+        "jokalala.plugins.trustedPublishers": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["security", "jokalala"],
-          "description": "Labels to add to created issues"
-        },
-        "jokalala.github.issueAssignees": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": [],
-          "description": "Default assignees for created issues"
-        },
-        "jokalala.github.linkPRComments": {
-          "type": "boolean",
-          "default": true,
-          "description": "Add comments to PRs when linking findings"
-        },
-        "jokalala.github.includeCodeSnippet": {
-          "type": "boolean",
-          "default": true,
-          "description": "Include code snippets in issue descriptions"
-        },
-        "jokalala.github.includeRemediation": {
-          "type": "boolean",
-          "default": true,
-          "description": "Include remediation suggestions in issues"
-        },
-        "jokalala.github.defaultRepository": {
-          "type": "string",
-          "default": "",
-          "description": "Default repository (owner/repo format)"
-        },
-        "jokalala.github.enterpriseUrl": {
-          "type": "string",
-          "default": "",
-          "description": "GitHub Enterprise URL (leave empty for github.com)"
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "jokalala",
+            "official"
+          ],
+          "description": "List of trusted plugin publishers (plugins from trusted publishers load without confirmation)"
         }
       }
     },
@@ -612,25 +612,24 @@
           "name": "Container & IaC Security"
         },
         {
-          "id": "jokalala-github",
-          "name": "GitHub Integration"
+          "id": "jokalala-plugins",
+          "name": "Plugins & Custom Rules"
         }
       ]
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "pnpm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "tsc --noEmit -p tsconfig.json",
-    "pretest": "npm run compile",
-    "test": "npm run lint",
+    "pretest": "pnpm run compile",
+    "test": "node ./out/test/runTest.js",
     "package": "vsce package",
     "publish": "vsce publish"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24.10.1",
+    "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.3.8",
     "typescript": "^5.3.3",

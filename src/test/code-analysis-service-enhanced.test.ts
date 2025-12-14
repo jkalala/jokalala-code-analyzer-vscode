@@ -23,7 +23,7 @@ describe('Enhanced Code Analysis Service Integration Tests', () => {
         autoAnalyze: false,
         showInlineWarnings: true,
         enableDiagnostics: true,
-        maxFileSize: 200000,
+        maxFileSize: 50000,
         maxProjectFiles: 40,
         maxProjectFileSize: 120000,
         requestTimeout: 5000,

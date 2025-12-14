@@ -1,562 +1,729 @@
 /**
  * Plugin Manager Service
  *
- * Manages the lifecycle of Jokalala plugins including:
- * - Plugin discovery and loading
- * - Plugin activation/deactivation
- * - Plugin context management
- * - Inter-plugin communication
+ * Enterprise-grade plugin system for extending the Jokalala Code Analyzer.
+ * Supports loading, managing, and executing plugins for custom security rules,
+ * language analyzers, and result enrichers.
+ *
+ * Features:
+ * - Plugin discovery and loading from workspace/global locations
+ * - Plugin lifecycle management (load/unload/enable/disable)
+ * - Plugin dependency resolution
+ * - Plugin configuration management
+ * - Built-in plugin marketplace integration
+ *
+ * @module services/plugin-manager
  */
 
 import * as vscode from 'vscode'
 import * as path from 'path'
 import * as fs from 'fs'
-import { Logger } from './logger'
-import { Issue } from '../interfaces/code-analysis-service.interface'
+import { EventEmitter } from 'events'
+import {
+  CustomRule,
+  CustomRuleEngine,
+  RuleCategory,
+  RuleSeverity,
+  RulePack,
+  PatternType,
+  getCustomRuleEngine,
+} from '../core/custom-rules'
 
 /**
- * Security finding interface that plugins receive
+ * Plugin types supported by the system
  */
-export interface SecurityFinding {
-    id: string
-    title: string
-    description: string
-    severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
-    category: string
-    cwe?: string
-    cve?: string
-    file: string
-    line: number
-    column?: number
-    code?: string
-    remediation?: string
-    references?: string[]
-    confidence: number
-    tags?: string[]
+export enum PluginType {
+  PATTERN = 'pattern',
+  LANGUAGE = 'language',
+  ENRICHER = 'enricher',
+  HOOK = 'hook',
+  INTEGRATION = 'integration',
+}
+
+/**
+ * Plugin status
+ */
+export enum PluginStatus {
+  INSTALLED = 'installed',
+  ENABLED = 'enabled',
+  DISABLED = 'disabled',
+  ERROR = 'error',
+  UPDATING = 'updating',
+}
+
+/**
+ * Plugin manifest definition
+ */
+export interface PluginManifest {
+  id: string
+  name: string
+  displayName: string
+  description: string
+  version: string
+  author?: string
+  publisher?: string
+  license?: string
+  homepage?: string
+  repository?: string
+  type: PluginType
+  engines?: {
+    jokalala?: string
+    vscode?: string
+  }
+  keywords?: string[]
+  categories?: string[]
+  activationEvents?: string[]
+  main?: string
+  contributes?: {
+    rules?: CustomRule[]
+    rulePacks?: RulePack[]
+    languages?: string[]
+    commands?: Array<{
+      command: string
+      title: string
+    }>
+    configuration?: Record<string, unknown>
+  }
+  dependencies?: Record<string, string>
+}
+
+/**
+ * Loaded plugin instance
+ */
+export interface LoadedPlugin {
+  manifest: PluginManifest
+  status: PluginStatus
+  path: string
+  loadedAt: Date
+  error?: string
+  instance?: {
+    activate?: (context: PluginContext) => Promise<void> | void
+    deactivate?: () => Promise<void> | void
+  }
+}
+
+/**
+ * Plugin context provided to plugins during activation
+ */
+export interface PluginContext {
+  extensionPath: string
+  pluginPath: string
+  storagePath: string
+  globalState: vscode.Memento
+  workspaceState: vscode.Memento
+  subscriptions: { dispose(): void }[]
+  ruleEngine: CustomRuleEngine
+  logger: PluginLogger
 }
 
 /**
  * Plugin logger interface
  */
 export interface PluginLogger {
-    info(message: string, ...args: any[]): void
-    warn(message: string, ...args: any[]): void
-    error(message: string, ...args: any[]): void
-    debug(message: string, ...args: any[]): void
+  info(message: string, ...args: unknown[]): void
+  warn(message: string, ...args: unknown[]): void
+  error(message: string, ...args: unknown[]): void
+  debug(message: string, ...args: unknown[]): void
 }
 
 /**
- * Context provided to plugins during activation
+ * Plugin search result from marketplace
  */
-export interface PluginContext {
-    extensionContext: vscode.ExtensionContext
-    secrets: vscode.SecretStorage
-    globalState: vscode.Memento
-    workspaceState: vscode.Memento
-    logger: PluginLogger
-    registerCommand: (command: string, callback: (...args: any[]) => any) => vscode.Disposable
-    onAnalysisComplete: (callback: (findings: SecurityFinding[]) => void) => vscode.Disposable
-    getFindings: () => SecurityFinding[]
-    getConfiguration: <T>(key: string) => T | undefined
+export interface PluginSearchResult {
+  id: string
+  name: string
+  displayName: string
+  description: string
+  version: string
+  author: string
+  downloads: number
+  rating: number
+  type: PluginType
+  verified: boolean
 }
 
 /**
- * Plugin manifest structure
+ * Plugin Manager Events
  */
-export interface PluginManifest {
-    id: string
-    name: string
-    displayName: string
-    version: string
-    description: string
-    publisher: string
-    main: string
-    engines?: {
-        jokalala?: string
-        vscode?: string
-    }
-    activationEvents?: string[]
-    contributes?: {
-        commands?: Array<{
-            command: string
-            title: string
-            category?: string
-            icon?: string
-        }>
-        views?: {
-            [viewContainerId: string]: Array<{
-                id: string
-                name: string
-                when?: string
-            }>
-        }
-        configuration?: {
-            title: string
-            properties: {
-                [key: string]: {
-                    type: string
-                    default?: any
-                    description?: string
-                    enum?: any[]
-                    items?: any
-                }
-            }
-        }
-        menus?: {
-            [menuId: string]: Array<{
-                command: string
-                when?: string
-                group?: string
-            }>
-        }
-    }
-    dependencies?: { [name: string]: string }
+export interface PluginManagerEvents {
+  'plugin-loaded': { plugin: LoadedPlugin }
+  'plugin-unloaded': { pluginId: string }
+  'plugin-enabled': { pluginId: string }
+  'plugin-disabled': { pluginId: string }
+  'plugin-error': { pluginId: string; error: Error }
+  'rules-updated': { count: number }
 }
 
 /**
- * Plugin module interface
+ * Plugin Manager Configuration
  */
-export interface PluginModule {
-    activate(context: PluginContext): Promise<void>
-    deactivate?(): Promise<void>
+export interface PluginManagerConfig {
+  enablePlugins: boolean
+  pluginPaths: string[]
+  enableMarketplace: boolean
+  autoUpdate: boolean
+  trustedPublishers: string[]
+  maxPlugins: number
+}
+
+const DEFAULT_CONFIG: PluginManagerConfig = {
+  enablePlugins: true,
+  pluginPaths: [],
+  enableMarketplace: true,
+  autoUpdate: false,
+  trustedPublishers: ['jokalala', 'official'],
+  maxPlugins: 50,
 }
 
 /**
- * Loaded plugin information
+ * Plugin Manager Service
+ *
+ * Central service for managing plugins in the VS Code extension.
  */
-interface LoadedPlugin {
-    manifest: PluginManifest
-    module: PluginModule
-    context: PluginContext
-    disposables: vscode.Disposable[]
-    isActive: boolean
-    path: string
-}
+export class PluginManager extends EventEmitter {
+  private config: PluginManagerConfig
+  private plugins: Map<string, LoadedPlugin> = new Map()
+  private ruleEngine: CustomRuleEngine
+  private context: vscode.ExtensionContext | null = null
+  private outputChannel: vscode.OutputChannel | null = null
 
-/**
- * Plugin Manager class
- */
-export class PluginManager {
-    private plugins: Map<string, LoadedPlugin> = new Map()
-    private logger: Logger
-    private extensionContext: vscode.ExtensionContext
-    private currentFindings: SecurityFinding[] = []
-    private analysisCompleteListeners: Set<(findings: SecurityFinding[]) => void> = new Set()
-    private pluginDirectories: string[] = []
+  constructor(config: Partial<PluginManagerConfig> = {}) {
+    super()
+    this.config = { ...DEFAULT_CONFIG, ...config }
+    this.ruleEngine = getCustomRuleEngine()
+  }
 
-    constructor(extensionContext: vscode.ExtensionContext, logger: Logger) {
-        this.extensionContext = extensionContext
-        this.logger = logger
+  /**
+   * Initialize the plugin manager
+   */
+  async initialize(context: vscode.ExtensionContext): Promise<void> {
+    this.context = context
+    this.outputChannel = vscode.window.createOutputChannel('Jokalala Plugins')
 
-        // Set up plugin directories
-        this.pluginDirectories = [
-            // Built-in plugins
-            path.join(extensionContext.extensionPath, 'plugins'),
-            // User plugins
-            path.join(extensionContext.globalStorageUri.fsPath, 'plugins'),
-        ]
+    // Load saved plugin state
+    const savedState = context.globalState.get<Record<string, boolean>>('jokalala.plugins.state', {})
 
-        // Add workspace plugins if available
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0]
-        if (workspaceFolder) {
-            this.pluginDirectories.push(
-                path.join(workspaceFolder.uri.fsPath, '.jokalala', 'plugins')
-            )
-        }
+    // Discover and load plugins
+    await this.discoverPlugins()
+
+    // Apply saved enabled/disabled state
+    for (const [pluginId, enabled] of Object.entries(savedState)) {
+      const plugin = this.plugins.get(pluginId)
+      if (plugin) {
+        plugin.status = enabled ? PluginStatus.ENABLED : PluginStatus.DISABLED
+      }
     }
 
-    /**
-     * Discover and load all available plugins
-     */
-    async discoverAndLoadPlugins(): Promise<void> {
-        this.logger.info('Discovering plugins...')
+    this.log('Plugin manager initialized', { pluginsLoaded: this.plugins.size })
+  }
 
-        for (const dir of this.pluginDirectories) {
-            await this.discoverPluginsInDirectory(dir)
-        }
+  /**
+   * Discover plugins from configured paths
+   */
+  async discoverPlugins(): Promise<void> {
+    const searchPaths = [
+      ...this.config.pluginPaths,
+      path.join(this.context?.extensionPath || '', 'plugins'),
+    ]
 
-        this.logger.info(`Discovered ${this.plugins.size} plugin(s)`)
+    // Add workspace plugin paths
+    const workspaceFolders = vscode.workspace.workspaceFolders
+    if (workspaceFolders) {
+      for (const folder of workspaceFolders) {
+        searchPaths.push(path.join(folder.uri.fsPath, '.jokalala', 'plugins'))
+      }
     }
 
-    /**
-     * Discover plugins in a specific directory
-     */
-    private async discoverPluginsInDirectory(directory: string): Promise<void> {
-        try {
-            if (!fs.existsSync(directory)) {
-                return
-            }
+    // Add global plugin path
+    const globalPluginPath = path.join(
+      this.context?.globalStorageUri?.fsPath || '',
+      'plugins'
+    )
+    searchPaths.push(globalPluginPath)
 
-            const entries = fs.readdirSync(directory, { withFileTypes: true })
-
-            for (const entry of entries) {
-                if (!entry.isDirectory()) continue
-
-                const pluginPath = path.join(directory, entry.name)
-                const manifestPath = path.join(pluginPath, 'manifest.json')
-
-                if (fs.existsSync(manifestPath)) {
-                    try {
-                        await this.loadPlugin(pluginPath)
-                    } catch (error) {
-                        this.logger.error(`Failed to load plugin at ${pluginPath}`, error as Error)
-                    }
-                }
-            }
-        } catch (error) {
-            this.logger.warn(`Failed to scan plugin directory ${directory}`, error as Error)
-        }
+    for (const searchPath of searchPaths) {
+      if (fs.existsSync(searchPath)) {
+        await this.loadPluginsFromDirectory(searchPath)
+      }
     }
+  }
 
-    /**
-     * Load a single plugin
-     */
-    async loadPlugin(pluginPath: string): Promise<void> {
-        const manifestPath = path.join(pluginPath, 'manifest.json')
+  /**
+   * Load plugins from a directory
+   */
+  private async loadPluginsFromDirectory(dirPath: string): Promise<void> {
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true })
 
-        // Read and parse manifest
-        const manifestContent = fs.readFileSync(manifestPath, 'utf-8')
-        const manifest: PluginManifest = JSON.parse(manifestContent)
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const pluginPath = path.join(dirPath, entry.name)
+          const manifestPath = path.join(pluginPath, 'jokalala-plugin.json')
 
-        if (this.plugins.has(manifest.id)) {
-            this.logger.warn(`Plugin ${manifest.id} already loaded, skipping`)
-            return
+          if (fs.existsSync(manifestPath)) {
+            await this.loadPlugin(pluginPath)
+          }
+        } else if (entry.name.endsWith('.json') && entry.name !== 'jokalala-plugin.json') {
+          // Load single rule file
+          await this.loadRuleFile(path.join(dirPath, entry.name))
         }
+      }
+    } catch (error) {
+      this.logError('Failed to load plugins from directory', error as Error, { dirPath })
+    }
+  }
 
-        this.logger.info(`Loading plugin: ${manifest.displayName} v${manifest.version}`)
+  /**
+   * Load a plugin from path
+   */
+  async loadPlugin(pluginPath: string): Promise<LoadedPlugin | null> {
+    const manifestPath = path.join(pluginPath, 'jokalala-plugin.json')
 
-        // Resolve main entry point
+    try {
+      // Read and parse manifest
+      const manifestContent = fs.readFileSync(manifestPath, 'utf-8')
+      const manifest: PluginManifest = JSON.parse(manifestContent)
+
+      // Validate manifest
+      if (!manifest.id || !manifest.name || !manifest.version) {
+        throw new Error('Invalid plugin manifest: missing required fields')
+      }
+
+      // Check if already loaded
+      if (this.plugins.has(manifest.id)) {
+        this.log(`Plugin ${manifest.id} already loaded, skipping`)
+        return this.plugins.get(manifest.id) || null
+      }
+
+      // Check max plugins limit
+      if (this.plugins.size >= this.config.maxPlugins) {
+        throw new Error(`Maximum plugin limit (${this.config.maxPlugins}) reached`)
+      }
+
+      // Create loaded plugin entry
+      const loadedPlugin: LoadedPlugin = {
+        manifest,
+        status: PluginStatus.INSTALLED,
+        path: pluginPath,
+        loadedAt: new Date(),
+      }
+
+      // Load contributed rules
+      if (manifest.contributes?.rules) {
+        for (const rule of manifest.contributes.rules) {
+          const validation = this.ruleEngine.addRule({
+            ...rule,
+            enabled: true,
+          })
+          if (!validation.valid) {
+            this.logError(`Invalid rule in plugin ${manifest.id}`, new Error(validation.errors[0]?.message))
+          }
+        }
+      }
+
+      // Load contributed rule packs
+      if (manifest.contributes?.rulePacks) {
+        for (const pack of manifest.contributes.rulePacks) {
+          this.ruleEngine.addRulePack(pack)
+        }
+      }
+
+      // Load main module if specified
+      if (manifest.main) {
         const mainPath = path.join(pluginPath, manifest.main)
-
-        if (!fs.existsSync(mainPath)) {
-            throw new Error(`Plugin main entry not found: ${mainPath}`)
+        if (fs.existsSync(mainPath)) {
+          try {
+            // Dynamic import for plugin modules
+            loadedPlugin.instance = require(mainPath)
+          } catch (e) {
+            this.logError(`Failed to load plugin module: ${manifest.id}`, e as Error)
+          }
         }
+      }
 
-        // Load the plugin module
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const pluginModule: PluginModule = require(mainPath)
+      // Store plugin
+      this.plugins.set(manifest.id, loadedPlugin)
+      loadedPlugin.status = PluginStatus.ENABLED
 
-        if (typeof pluginModule.activate !== 'function') {
-            throw new Error(`Plugin ${manifest.id} does not export an activate function`)
-        }
-
-        // Create plugin context
-        const context = this.createPluginContext(manifest)
-
-        // Store plugin info
-        this.plugins.set(manifest.id, {
-            manifest,
-            module: pluginModule,
-            context,
-            disposables: [],
-            isActive: false,
-            path: pluginPath,
-        })
-
-        // Register contributed commands from manifest
-        this.registerPluginContributions(manifest)
-    }
-
-    /**
-     * Create a context for a plugin
-     */
-    private createPluginContext(manifest: PluginManifest): PluginContext {
-        const pluginLogger: PluginLogger = {
-            info: (message: string, ...args: any[]) => {
-                this.logger.info(`[${manifest.id}] ${message}`, ...args)
-            },
-            warn: (message: string, ...args: any[]) => {
-                this.logger.warn(`[${manifest.id}] ${message}`, ...args)
-            },
-            error: (message: string, ...args: any[]) => {
-                this.logger.error(`[${manifest.id}] ${message}`, args[0] as Error)
-            },
-            debug: (message: string, ...args: any[]) => {
-                this.logger.debug(`[${manifest.id}] ${message}`, ...args)
-            },
-        }
-
-        return {
-            extensionContext: this.extensionContext,
-            secrets: this.extensionContext.secrets,
-            globalState: this.extensionContext.globalState,
-            workspaceState: this.extensionContext.workspaceState,
-            logger: pluginLogger,
-            registerCommand: (command: string, callback: (...args: any[]) => any) => {
-                const disposable = vscode.commands.registerCommand(command, callback)
-                const plugin = this.plugins.get(manifest.id)
-                if (plugin) {
-                    plugin.disposables.push(disposable)
-                }
-                return disposable
-            },
-            onAnalysisComplete: (callback: (findings: SecurityFinding[]) => void) => {
-                this.analysisCompleteListeners.add(callback)
-                return {
-                    dispose: () => {
-                        this.analysisCompleteListeners.delete(callback)
-                    },
-                }
-            },
-            getFindings: () => this.currentFindings,
-            getConfiguration: <T>(key: string): T | undefined => {
-                const config = vscode.workspace.getConfiguration()
-                return config.get<T>(key)
-            },
-        }
-    }
-
-    /**
-     * Register contributions from plugin manifest
-     */
-    private registerPluginContributions(manifest: PluginManifest): void {
-        // Configuration contributions are handled by VS Code through package.json
-        // Commands are registered during plugin activation
-        // Views are registered through the main extension's package.json
-
-        if (manifest.contributes?.configuration) {
-            this.logger.debug(`Plugin ${manifest.id} contributes configuration settings`)
-        }
-
-        if (manifest.contributes?.commands) {
-            this.logger.debug(
-                `Plugin ${manifest.id} contributes ${manifest.contributes.commands.length} commands`
-            )
-        }
-
-        if (manifest.contributes?.views) {
-            this.logger.debug(`Plugin ${manifest.id} contributes views`)
-        }
-    }
-
-    /**
-     * Activate all loaded plugins
-     */
-    async activateAllPlugins(): Promise<void> {
-        for (const [id, plugin] of this.plugins) {
-            if (!plugin.isActive) {
-                await this.activatePlugin(id)
-            }
-        }
-    }
-
-    /**
-     * Activate a specific plugin
-     */
-    async activatePlugin(pluginId: string): Promise<void> {
-        const plugin = this.plugins.get(pluginId)
-
-        if (!plugin) {
-            throw new Error(`Plugin ${pluginId} not found`)
-        }
-
-        if (plugin.isActive) {
-            this.logger.warn(`Plugin ${pluginId} is already active`)
-            return
-        }
-
+      // Activate plugin if it has an activate function
+      if (loadedPlugin.instance?.activate && this.context) {
         try {
-            this.logger.info(`Activating plugin: ${plugin.manifest.displayName}`)
-            await plugin.module.activate(plugin.context)
-            plugin.isActive = true
-            this.logger.info(`Plugin ${plugin.manifest.displayName} activated successfully`)
-        } catch (error) {
-            this.logger.error(`Failed to activate plugin ${pluginId}`, error as Error)
-            throw error
+          await loadedPlugin.instance.activate(this.createPluginContext(pluginPath))
+        } catch (e) {
+          loadedPlugin.status = PluginStatus.ERROR
+          loadedPlugin.error = (e as Error).message
+          this.logError(`Failed to activate plugin: ${manifest.id}`, e as Error)
         }
+      }
+
+      this.log(`Plugin loaded: ${manifest.displayName || manifest.name} v${manifest.version}`)
+      this.emit('plugin-loaded', { plugin: loadedPlugin })
+
+      return loadedPlugin
+    } catch (error) {
+      this.logError('Failed to load plugin', error as Error, { pluginPath })
+      return null
+    }
+  }
+
+  /**
+   * Load a single rule file
+   */
+  async loadRuleFile(filePath: string): Promise<boolean> {
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8')
+      const data = JSON.parse(content)
+
+      if (Array.isArray(data.rules)) {
+        // Rule pack format
+        for (const rule of data.rules) {
+          this.ruleEngine.addRule({ ...rule, enabled: true })
+        }
+        this.log(`Loaded ${data.rules.length} rules from ${path.basename(filePath)}`)
+      } else if (data.id && data.patterns) {
+        // Single rule format
+        this.ruleEngine.addRule({ ...data, enabled: true })
+        this.log(`Loaded rule ${data.id} from ${path.basename(filePath)}`)
+      }
+
+      this.emit('rules-updated', { count: this.ruleEngine.getRules().length })
+      return true
+    } catch (error) {
+      this.logError('Failed to load rule file', error as Error, { filePath })
+      return false
+    }
+  }
+
+  /**
+   * Unload a plugin
+   */
+  async unloadPlugin(pluginId: string): Promise<boolean> {
+    const plugin = this.plugins.get(pluginId)
+    if (!plugin) {
+      return false
     }
 
-    /**
-     * Deactivate a specific plugin
-     */
-    async deactivatePlugin(pluginId: string): Promise<void> {
-        const plugin = this.plugins.get(pluginId)
+    try {
+      // Deactivate plugin
+      if (plugin.instance?.deactivate) {
+        await plugin.instance.deactivate()
+      }
 
-        if (!plugin) {
-            throw new Error(`Plugin ${pluginId} not found`)
+      // Remove contributed rules
+      if (plugin.manifest.contributes?.rules) {
+        for (const rule of plugin.manifest.contributes.rules) {
+          this.ruleEngine.removeRule(rule.id)
         }
+      }
 
-        if (!plugin.isActive) {
-            return
-        }
+      // Remove from map
+      this.plugins.delete(pluginId)
+      this.emit('plugin-unloaded', { pluginId })
 
-        try {
-            this.logger.info(`Deactivating plugin: ${plugin.manifest.displayName}`)
+      this.log(`Plugin unloaded: ${plugin.manifest.name}`)
+      return true
+    } catch (error) {
+      this.logError('Failed to unload plugin', error as Error, { pluginId })
+      return false
+    }
+  }
 
-            // Call plugin's deactivate if available
-            if (plugin.module.deactivate) {
-                await plugin.module.deactivate()
-            }
-
-            // Dispose all registered disposables
-            plugin.disposables.forEach(d => d.dispose())
-            plugin.disposables = []
-
-            plugin.isActive = false
-            this.logger.info(`Plugin ${plugin.manifest.displayName} deactivated`)
-        } catch (error) {
-            this.logger.error(`Error deactivating plugin ${pluginId}`, error as Error)
-        }
+  /**
+   * Enable a plugin
+   */
+  async enablePlugin(pluginId: string): Promise<boolean> {
+    const plugin = this.plugins.get(pluginId)
+    if (!plugin) {
+      return false
     }
 
-    /**
-     * Deactivate all plugins
-     */
-    async deactivateAllPlugins(): Promise<void> {
-        for (const [id] of this.plugins) {
-            await this.deactivatePlugin(id)
-        }
+    plugin.status = PluginStatus.ENABLED
+
+    // Re-enable rules
+    if (plugin.manifest.contributes?.rules) {
+      for (const rule of plugin.manifest.contributes.rules) {
+        this.ruleEngine.setRuleEnabled(rule.id, true)
+      }
     }
 
-    /**
-     * Notify plugins of analysis completion
-     */
-    notifyAnalysisComplete(issues: Issue[]): void {
-        // Convert issues to SecurityFindings
-        this.currentFindings = issues.map(issue => this.issueToSecurityFinding(issue))
+    await this.savePluginState()
+    this.emit('plugin-enabled', { pluginId })
+    return true
+  }
 
-        // Notify all listeners
-        for (const listener of this.analysisCompleteListeners) {
-            try {
-                listener(this.currentFindings)
-            } catch (error) {
-                this.logger.error('Error in analysis complete listener', error as Error)
-            }
-        }
+  /**
+   * Disable a plugin
+   */
+  async disablePlugin(pluginId: string): Promise<boolean> {
+    const plugin = this.plugins.get(pluginId)
+    if (!plugin) {
+      return false
     }
 
-    /**
-     * Convert an Issue to a SecurityFinding
-     */
-    private issueToSecurityFinding(issue: Issue): SecurityFinding {
-        return {
-            id: `${issue.category}-${issue.line}-${Date.now()}`,
-            title: issue.message,
-            description: issue.message,
-            severity: issue.severity,
-            category: issue.category,
-            cwe: issue.codeSnippet?.match(/CWE-\d+/)?.[0],
-            file: issue.filePath || '',
-            line: issue.line || 1,
-            column: issue.column,
-            code: issue.codeSnippet,
-            remediation: issue.suggestion,
-            confidence: issue.priorityScore ? issue.priorityScore / 100 : 0.8,
-            tags: [issue.source],
-        }
+    plugin.status = PluginStatus.DISABLED
+
+    // Disable rules
+    if (plugin.manifest.contributes?.rules) {
+      for (const rule of plugin.manifest.contributes.rules) {
+        this.ruleEngine.setRuleEnabled(rule.id, false)
+      }
     }
 
-    /**
-     * Get list of loaded plugins
-     */
-    getLoadedPlugins(): PluginManifest[] {
-        return Array.from(this.plugins.values()).map(p => p.manifest)
+    await this.savePluginState()
+    this.emit('plugin-disabled', { pluginId })
+    return true
+  }
+
+  /**
+   * Get all loaded plugins
+   */
+  getPlugins(): LoadedPlugin[] {
+    return Array.from(this.plugins.values())
+  }
+
+  /**
+   * Get a specific plugin
+   */
+  getPlugin(pluginId: string): LoadedPlugin | undefined {
+    return this.plugins.get(pluginId)
+  }
+
+  /**
+   * Get plugins by type
+   */
+  getPluginsByType(type: PluginType): LoadedPlugin[] {
+    return Array.from(this.plugins.values()).filter(p => p.manifest.type === type)
+  }
+
+  /**
+   * Get enabled plugins
+   */
+  getEnabledPlugins(): LoadedPlugin[] {
+    return Array.from(this.plugins.values()).filter(p => p.status === PluginStatus.ENABLED)
+  }
+
+  /**
+   * Get plugin statistics
+   */
+  getStatistics(): {
+    total: number
+    enabled: number
+    disabled: number
+    errors: number
+    byType: Record<string, number>
+    totalRules: number
+  } {
+    const plugins = Array.from(this.plugins.values())
+    const byType: Record<string, number> = {}
+
+    for (const plugin of plugins) {
+      const type = plugin.manifest.type || 'unknown'
+      byType[type] = (byType[type] || 0) + 1
     }
 
-    /**
-     * Get plugin status
-     */
-    getPluginStatus(pluginId: string): { loaded: boolean; active: boolean } | null {
-        const plugin = this.plugins.get(pluginId)
-        if (!plugin) return null
+    return {
+      total: plugins.length,
+      enabled: plugins.filter(p => p.status === PluginStatus.ENABLED).length,
+      disabled: plugins.filter(p => p.status === PluginStatus.DISABLED).length,
+      errors: plugins.filter(p => p.status === PluginStatus.ERROR).length,
+      byType,
+      totalRules: this.ruleEngine.getRules().length,
+    }
+  }
 
-        return {
-            loaded: true,
-            active: plugin.isActive,
-        }
+  /**
+   * Create a new plugin scaffold
+   */
+  async createPluginScaffold(
+    name: string,
+    type: PluginType,
+    targetPath: string
+  ): Promise<string> {
+    const pluginId = name.toLowerCase().replace(/\s+/g, '-')
+    const pluginPath = path.join(targetPath, pluginId)
+
+    // Create directory
+    fs.mkdirSync(pluginPath, { recursive: true })
+
+    // Create manifest
+    const manifest: PluginManifest = {
+      id: pluginId,
+      name: pluginId,
+      displayName: name,
+      description: `Custom ${type} plugin for Jokalala Code Analyzer`,
+      version: '1.0.0',
+      type,
+      engines: {
+        jokalala: '^2.0.0',
+        vscode: '^1.85.0',
+      },
+      contributes: {
+        rules: type === PluginType.PATTERN ? [
+          {
+            id: `${pluginId}-rule-1`,
+            name: 'Example Rule',
+            description: 'An example security rule',
+            version: '1.0.0',
+            severity: RuleSeverity.MEDIUM,
+            category: RuleCategory.SECURITY,
+            tags: ['example'],
+            languages: ['javascript', 'typescript'],
+            patterns: [
+              {
+                type: PatternType.REGEX,
+                value: 'console\\.log\\(',
+              },
+            ],
+            message: {
+              default: 'Console.log found in code',
+              fix: 'Remove console.log statements in production code',
+            },
+            enabled: true,
+          },
+        ] : [],
+      },
     }
 
-    /**
-     * Install a plugin from a path
-     */
-    async installPlugin(sourcePath: string): Promise<void> {
-        const manifestPath = path.join(sourcePath, 'manifest.json')
+    // Write manifest
+    fs.writeFileSync(
+      path.join(pluginPath, 'jokalala-plugin.json'),
+      JSON.stringify(manifest, null, 2)
+    )
 
-        if (!fs.existsSync(manifestPath)) {
-            throw new Error('Invalid plugin: manifest.json not found')
-        }
+    // Create README
+    const readme = `# ${name}
 
-        const manifestContent = fs.readFileSync(manifestPath, 'utf-8')
-        const manifest: PluginManifest = JSON.parse(manifestContent)
+A custom plugin for Jokalala Code Analyzer.
 
-        // Target directory for user plugins
-        const targetDir = path.join(
-            this.extensionContext.globalStorageUri.fsPath,
-            'plugins',
-            manifest.id
-        )
+## Installation
 
-        // Create target directory
-        fs.mkdirSync(targetDir, { recursive: true })
+Copy this folder to your Jokalala plugins directory:
+- Workspace: \`.jokalala/plugins/\`
+- Global: VS Code global storage
 
-        // Copy plugin files
-        this.copyDirectory(sourcePath, targetDir)
+## Configuration
 
-        this.logger.info(`Plugin ${manifest.displayName} installed to ${targetDir}`)
+Edit \`jokalala-plugin.json\` to customize rules and settings.
 
-        // Load and activate the plugin
-        await this.loadPlugin(targetDir)
-        await this.activatePlugin(manifest.id)
+## Rules
+
+This plugin provides the following rules:
+
+${type === PluginType.PATTERN ? '- `' + pluginId + '-rule-1`: Example Rule' : 'No rules defined yet.'}
+
+## License
+
+MIT
+`
+    fs.writeFileSync(path.join(pluginPath, 'README.md'), readme)
+
+    this.log(`Created plugin scaffold at ${pluginPath}`)
+    return pluginPath
+  }
+
+  /**
+   * Import rules from a file
+   */
+  async importRulesFromFile(uri: vscode.Uri): Promise<{ imported: number; errors: string[] }> {
+    try {
+      const content = fs.readFileSync(uri.fsPath, 'utf-8')
+      return this.ruleEngine.importRules(content)
+    } catch (error) {
+      return { imported: 0, errors: [(error as Error).message] }
     }
+  }
 
-    /**
-     * Uninstall a plugin
-     */
-    async uninstallPlugin(pluginId: string): Promise<void> {
-        const plugin = this.plugins.get(pluginId)
+  /**
+   * Export rules to a file
+   */
+  async exportRulesToFile(uri: vscode.Uri, ruleIds?: string[]): Promise<void> {
+    const content = this.ruleEngine.exportRules(ruleIds)
+    fs.writeFileSync(uri.fsPath, content)
+  }
 
-        if (!plugin) {
-            throw new Error(`Plugin ${pluginId} not found`)
-        }
-
-        // Deactivate first
-        await this.deactivatePlugin(pluginId)
-
-        // Remove from loaded plugins
-        this.plugins.delete(pluginId)
-
-        // Delete plugin files (only if in user plugins directory)
-        const userPluginsDir = path.join(
-            this.extensionContext.globalStorageUri.fsPath,
-            'plugins'
-        )
-
-        if (plugin.path.startsWith(userPluginsDir)) {
-            fs.rmSync(plugin.path, { recursive: true, force: true })
-            this.logger.info(`Plugin ${pluginId} uninstalled`)
-        } else {
-            this.logger.warn(`Plugin ${pluginId} is a built-in plugin and cannot be uninstalled`)
-        }
+  /**
+   * Create plugin context for activation
+   */
+  private createPluginContext(pluginPath: string): PluginContext {
+    return {
+      extensionPath: this.context?.extensionPath || '',
+      pluginPath,
+      storagePath: this.context?.globalStorageUri?.fsPath || '',
+      globalState: this.context?.globalState as vscode.Memento,
+      workspaceState: this.context?.workspaceState as vscode.Memento,
+      subscriptions: [],
+      ruleEngine: this.ruleEngine,
+      logger: {
+        info: (msg, ...args) => this.log(msg, ...args),
+        warn: (msg, ...args) => this.log(`[WARN] ${msg}`, ...args),
+        error: (msg, ...args) => this.logError(msg, new Error(), ...args),
+        debug: (msg, ...args) => this.log(`[DEBUG] ${msg}`, ...args),
+      },
     }
+  }
 
-    /**
-     * Helper to copy directory recursively
-     */
-    private copyDirectory(source: string, target: string): void {
-        if (!fs.existsSync(target)) {
-            fs.mkdirSync(target, { recursive: true })
-        }
-
-        const entries = fs.readdirSync(source, { withFileTypes: true })
-
-        for (const entry of entries) {
-            const sourcePath = path.join(source, entry.name)
-            const targetPath = path.join(target, entry.name)
-
-            if (entry.isDirectory()) {
-                this.copyDirectory(sourcePath, targetPath)
-            } else {
-                fs.copyFileSync(sourcePath, targetPath)
-            }
-        }
+  /**
+   * Save plugin state
+   */
+  private async savePluginState(): Promise<void> {
+    const state: Record<string, boolean> = {}
+    for (const [id, plugin] of this.plugins) {
+      state[id] = plugin.status === PluginStatus.ENABLED
     }
+    await this.context?.globalState.update('jokalala.plugins.state', state)
+  }
 
-    /**
-     * Dispose all resources
-     */
-    dispose(): void {
-        this.deactivateAllPlugins().catch(error => {
-            this.logger.error('Error during plugin manager disposal', error as Error)
-        })
+  /**
+   * Log message
+   */
+  private log(message: string, ...args: unknown[]): void {
+    const timestamp = new Date().toISOString()
+    const formatted = `[${timestamp}] ${message} ${args.length ? JSON.stringify(args) : ''}`
+    this.outputChannel?.appendLine(formatted)
+  }
+
+  /**
+   * Log error
+   */
+  private logError(message: string, error: Error, ...args: unknown[]): void {
+    const timestamp = new Date().toISOString()
+    const formatted = `[${timestamp}] ERROR: ${message} - ${error.message} ${args.length ? JSON.stringify(args) : ''}`
+    this.outputChannel?.appendLine(formatted)
+    console.error(formatted, error)
+  }
+
+  /**
+   * Dispose the plugin manager
+   */
+  dispose(): void {
+    for (const [id] of this.plugins) {
+      this.unloadPlugin(id).catch(() => {})
     }
+    this.outputChannel?.dispose()
+  }
+}
+
+// Singleton instance
+let pluginManagerInstance: PluginManager | null = null
+
+/**
+ * Get the plugin manager instance
+ */
+export function getPluginManager(config?: Partial<PluginManagerConfig>): PluginManager {
+  if (!pluginManagerInstance) {
+    pluginManagerInstance = new PluginManager(config)
+  }
+  return pluginManagerInstance
+}
+
+/**
+ * Initialize the plugin manager with extension context
+ */
+export async function initializePluginManager(
+  context: vscode.ExtensionContext,
+  config?: Partial<PluginManagerConfig>
+): Promise<PluginManager> {
+  const manager = getPluginManager(config)
+  await manager.initialize(context)
+  return manager
 }

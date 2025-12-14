@@ -36,12 +36,12 @@ export interface UserFeedback {
   timestamp: number
   userIdHash: string           // Anonymous user identifier
   sessionId: string
-  language?: string
-  fileName?: string            // Anonymized (just extension)
-  lineCount?: number
-  fixApplied?: string          // Which fix approach was used
-  timeToAction?: number        // Milliseconds from display to action
-  metadata?: Record<string, unknown>
+  language?: string | undefined
+  fileName?: string | undefined            // Anonymized (just extension)
+  lineCount?: number | undefined
+  fixApplied?: string | undefined          // Which fix approach was used
+  timeToAction?: number | undefined        // Milliseconds from display to action
+  metadata?: Record<string, unknown> | undefined
 }
 
 /**
@@ -157,11 +157,11 @@ export class UserFeedbackService {
     confidence: number,
     action: UserAction,
     options?: {
-      language?: string
-      fileName?: string
-      lineCount?: number
-      fixApplied?: string
-      metadata?: Record<string, unknown>
+      language?: string | undefined
+      fileName?: string | undefined
+      lineCount?: number | undefined
+      fixApplied?: string | undefined
+      metadata?: Record<string, unknown> | undefined
     }
   ): void {
     if (!this.telemetryEnabled) {
@@ -327,13 +327,15 @@ export class UserFeedbackService {
       }
     }
     const typeMetrics = metrics.byVulnerabilityType[feedback.vulnerabilityType]
-    typeMetrics.total++
-    if (feedback.userAction === 'ACCEPTED' || feedback.userAction === 'FIXED') {
-      typeMetrics.accepted++
-    } else if (feedback.userAction === 'REJECTED') {
-      typeMetrics.rejected++
+    if (typeMetrics) {
+      typeMetrics.total++
+      if (feedback.userAction === 'ACCEPTED' || feedback.userAction === 'FIXED') {
+        typeMetrics.accepted++
+      } else if (feedback.userAction === 'REJECTED') {
+        typeMetrics.rejected++
+      }
+      typeMetrics.acceptanceRate = typeMetrics.accepted / (typeMetrics.accepted + typeMetrics.rejected) || 0
     }
-    typeMetrics.acceptanceRate = typeMetrics.accepted / (typeMetrics.accepted + typeMetrics.rejected) || 0
 
     // Update by language
     if (feedback.language) {
@@ -345,11 +347,13 @@ export class UserFeedbackService {
         }
       }
       const langMetrics = metrics.byLanguage[feedback.language]
-      langMetrics.total++
-      if (feedback.userAction === 'ACCEPTED' || feedback.userAction === 'FIXED') {
-        langMetrics.accepted++
-      } else if (feedback.userAction === 'REJECTED') {
-        langMetrics.rejected++
+      if (langMetrics) {
+        langMetrics.total++
+        if (feedback.userAction === 'ACCEPTED' || feedback.userAction === 'FIXED') {
+          langMetrics.accepted++
+        } else if (feedback.userAction === 'REJECTED') {
+          langMetrics.rejected++
+        }
       }
     }
 
@@ -362,11 +366,13 @@ export class UserFeedbackService {
       }
     }
     const sevMetrics = metrics.bySeverity[feedback.severity]
-    sevMetrics.total++
-    if (feedback.userAction === 'ACCEPTED' || feedback.userAction === 'FIXED') {
-      sevMetrics.accepted++
-    } else if (feedback.userAction === 'REJECTED') {
-      sevMetrics.rejected++
+    if (sevMetrics) {
+      sevMetrics.total++
+      if (feedback.userAction === 'ACCEPTED' || feedback.userAction === 'FIXED') {
+        sevMetrics.accepted++
+      } else if (feedback.userAction === 'REJECTED') {
+        sevMetrics.rejected++
+      }
     }
 
     this.saveMetrics(metrics)

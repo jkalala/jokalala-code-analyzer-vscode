@@ -239,15 +239,27 @@ export class CodeAnalysisService implements ICodeAnalysisService {
       )
     }
 
+    // Normalize endpoint - remove trailing slash if present
+    const normalizedEndpoint = apiEndpoint.replace(/\/$/, '')
+    const fullUrl = `${normalizedEndpoint}/analyze-enhanced`
+    this.logger.info(`[DEBUG] ====== ANALYSIS REQUEST ======`)
+    this.logger.info(`[DEBUG] Original API Endpoint: ${apiEndpoint}`)
+    this.logger.info(`[DEBUG] Normalized Endpoint: ${normalizedEndpoint}`)
+    this.logger.info(`[DEBUG] Full URL: ${fullUrl}`)
+    this.logger.info(`[DEBUG] Analysis Mode: ${analysisMode}`)
+    this.logger.info(`[DEBUG] Language: ${language}`)
+    this.logger.info(`[DEBUG] Code length: ${code.length} chars`)
+
     // Create abort controller for this request
     const abortController = new AbortController()
     this.activeRequests.set(requestId, abortController)
 
     try {
+      this.logger.info(`[DEBUG] Executing request via circuit breaker...`)
       // Execute request with circuit breaker protection
-      const response = await this.circuitBreaker.execute(apiEndpoint, () =>
+      const response = await this.circuitBreaker.execute(normalizedEndpoint, () =>
         axios.post(
-          `${apiEndpoint}/analyze-enhanced`,
+          fullUrl,
           {
             code,
             language,
@@ -304,6 +316,19 @@ export class CodeAnalysisService implements ICodeAnalysisService {
         throw new Error(response.data.error?.message || 'Analysis failed')
       }
     } catch (error: any) {
+      this.logger.error(`[DEBUG] ====== REQUEST FAILED ======`)
+      this.logger.error(`[DEBUG] Error type: ${error.name || 'Unknown'}`)
+      this.logger.error(`[DEBUG] Error message: ${error.message}`)
+      this.logger.error(`[DEBUG] Has response: ${!!error.response}`)
+      this.logger.error(`[DEBUG] Has request: ${!!error.request}`)
+      if (error.response) {
+        this.logger.error(`[DEBUG] Response status: ${error.response.status}`)
+        this.logger.error(`[DEBUG] Response URL: ${error.response.config?.url}`)
+      }
+      if (error.config) {
+        this.logger.error(`[DEBUG] Request URL: ${error.config.url}`)
+        this.logger.error(`[DEBUG] Request method: ${error.config.method}`)
+      }
       this.logger.error('Code analysis request failed', error)
 
       if (axios.isCancel(error)) {
@@ -311,11 +336,17 @@ export class CodeAnalysisService implements ICodeAnalysisService {
       }
 
       if (error.response) {
+        const status = error.response.status
+        if (status === 404) {
+          throw new Error(
+            `API endpoint not found (404). URL attempted: ${error.config?.url || fullUrl}. Start the Jokalala backend: pnpm dev`
+          )
+        }
         throw new Error(
-          `API Error: ${error.response.data?.error?.message || error.message}`
+          `API Error (${status}): ${error.response.data?.error?.message || error.message}`
         )
       } else if (error.request) {
-        throw new Error('No response from API. Is the service running?')
+        throw new Error(`Cannot connect to server at ${fullUrl}. Start the Jokalala backend with: pnpm dev`)
       } else {
         throw new Error(`Request failed: ${error.message}`)
       }
@@ -423,11 +454,17 @@ export class CodeAnalysisService implements ICodeAnalysisService {
       }
 
       if (error.response) {
+        const status = error.response.status
+        if (status === 404) {
+          throw new Error(
+            'API endpoint not found (404). Start the Jokalala backend: pnpm dev'
+          )
+        }
         throw new Error(
-          `API Error: ${error.response.data?.error?.message || error.message}`
+          `API Error (${status}): ${error.response.data?.error?.message || error.message}`
         )
       } else if (error.request) {
-        throw new Error('No response from API. Is the service running?')
+        throw new Error('Cannot connect to server. Start the Jokalala backend with: pnpm dev')
       } else {
         throw new Error(`Request failed: ${error.message}`)
       }

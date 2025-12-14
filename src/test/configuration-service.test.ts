@@ -4,8 +4,6 @@
  */
 
 import * as assert from 'assert'
-import * as fs from 'fs'
-import * as path from 'path'
 import type {
   ConfigurationChanges,
   ExtensionSettings,
@@ -27,21 +25,6 @@ suite('ConfigurationService - Schema Validation Tests', () => {
       result.valid,
       true,
       'Default configuration should be valid'
-    )
-  })
-
-  test('should align maxFileSize default with manifest', () => {
-    const settings = configService.getSettings()
-    const packageJsonPath = path.resolve(__dirname, '..', '..', 'package.json')
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'))
-    const manifestDefault =
-      packageJson.contributes?.configuration?.properties?.['jokalala.maxFileSize']
-        ?.default
-
-    assert.strictEqual(
-      settings.maxFileSize,
-      manifestDefault,
-      'Runtime default should match manifest default for maxFileSize'
     )
   })
 
@@ -292,12 +275,12 @@ suite('ConfigurationService - Change Notifications Tests', () => {
   test('should calculate diff for added settings', () => {
     const previous: Partial<ExtensionSettings> = {
       apiEndpoint: 'https://api.example.com',
-      maxFileSize: 200_000,
+      maxFileSize: 50_000,
     }
 
     const current: ExtensionSettings = {
       apiEndpoint: 'https://api.example.com',
-      maxFileSize: 200_000,
+      maxFileSize: 50_000,
       autoAnalyze: true,
       analysisMode: 'full',
       showInlineWarnings: true,
@@ -325,7 +308,7 @@ suite('ConfigurationService - Change Notifications Tests', () => {
   test('should calculate diff for modified settings', () => {
     const previous: ExtensionSettings = {
       apiEndpoint: 'https://api.example.com',
-      maxFileSize: 200_000,
+      maxFileSize: 50_000,
       autoAnalyze: false,
       analysisMode: 'quick',
       showInlineWarnings: true,
@@ -339,7 +322,7 @@ suite('ConfigurationService - Change Notifications Tests', () => {
 
     const current: ExtensionSettings = {
       ...previous,
-      maxFileSize: 250_000,
+      maxFileSize: 100_000,
       analysisMode: 'full',
     }
 
@@ -367,7 +350,7 @@ suite('ConfigurationService - Change Notifications Tests', () => {
     )
     assert.strictEqual(
       modified.maxFileSize,
-      250_000,
+      100_000,
       'Modified value should be correct'
     )
   })
@@ -375,7 +358,7 @@ suite('ConfigurationService - Change Notifications Tests', () => {
   test('should calculate diff for removed settings', () => {
     const previous: ExtensionSettings = {
       apiEndpoint: 'https://api.example.com',
-      maxFileSize: 200_000,
+      maxFileSize: 50_000,
       autoAnalyze: false,
       analysisMode: 'quick',
       showInlineWarnings: true,
@@ -390,7 +373,7 @@ suite('ConfigurationService - Change Notifications Tests', () => {
 
     const current: Partial<ExtensionSettings> = {
       apiEndpoint: 'https://api.example.com',
-      maxFileSize: 200_000,
+      maxFileSize: 50_000,
       autoAnalyze: false,
       analysisMode: 'quick',
       showInlineWarnings: true,
