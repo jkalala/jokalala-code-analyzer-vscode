@@ -1,8 +1,8 @@
 {
   "name": "jokalala-code-analysis",
   "displayName": "Jokalala Code Analyzer",
-  "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 19 languages. Now with Container/IaC security scanning and SCA.",
-  "version": "1.1.0",
+  "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 19 languages. Now with Plugin System, GitHub Integration, Container/IaC security scanning and SCA.",
+  "version": "2.2.0",
   "publisher": "jokalala",
   "author": {
     "name": "Jokalala Team",
@@ -66,7 +66,9 @@
     "ai",
     "machine-learning",
     "devsecops",
-    "secure-coding"
+    "secure-coding",
+    "github-integration",
+    "plugin-system"
   ],
   "activationEvents": [
     "onLanguage:javascript",
@@ -256,6 +258,65 @@
         "command": "jokalala.clearContainerIaCResults",
         "title": "Jokalala: Clear Container/IaC Results",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "jokalala.github.authenticate",
+        "title": "Jokalala GitHub: Sign In",
+        "icon": "$(sign-in)",
+        "category": "Jokalala GitHub"
+      },
+      {
+        "command": "jokalala.github.createIssue",
+        "title": "Jokalala GitHub: Create Issue from Finding",
+        "icon": "$(issue-opened)",
+        "category": "Jokalala GitHub"
+      },
+      {
+        "command": "jokalala.github.createIssuesFromFindings",
+        "title": "Jokalala GitHub: Create Issues from All Findings",
+        "icon": "$(issues)",
+        "category": "Jokalala GitHub"
+      },
+      {
+        "command": "jokalala.github.linkToPR",
+        "title": "Jokalala GitHub: Link Finding to PR",
+        "icon": "$(git-pull-request)",
+        "category": "Jokalala GitHub"
+      },
+      {
+        "command": "jokalala.github.viewIssues",
+        "title": "Jokalala GitHub: View Created Issues",
+        "icon": "$(list-unordered)",
+        "category": "Jokalala GitHub"
+      },
+      {
+        "command": "jokalala.github.syncStatus",
+        "title": "Jokalala GitHub: Sync Issue Status",
+        "icon": "$(sync)",
+        "category": "Jokalala GitHub"
+      },
+      {
+        "command": "jokalala.github.refreshTree",
+        "title": "Jokalala GitHub: Refresh",
+        "icon": "$(refresh)",
+        "category": "Jokalala GitHub"
+      },
+      {
+        "command": "jokalala.github.logout",
+        "title": "Jokalala GitHub: Sign Out",
+        "icon": "$(sign-out)",
+        "category": "Jokalala GitHub"
+      },
+      {
+        "command": "jokalala.github.openInGitHub",
+        "title": "Open in GitHub",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "jokalala.managePlugins",
+        "title": "Jokalala: Manage Plugins",
+        "icon": "$(extensions)",
+        "category": "Jokalala"
       }
     ],
     "menus": {
@@ -357,6 +418,26 @@
           "command": "jokalala.clearContainerIaCResults",
           "when": "view == jokalala-container-iac",
           "group": "navigation@4"
+        },
+        {
+          "command": "jokalala.github.authenticate",
+          "when": "view == jokalala-github",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jokalala.github.createIssuesFromFindings",
+          "when": "view == jokalala-github",
+          "group": "navigation@2"
+        },
+        {
+          "command": "jokalala.github.syncStatus",
+          "when": "view == jokalala-github",
+          "group": "navigation@3"
+        },
+        {
+          "command": "jokalala.github.refreshTree",
+          "when": "view == jokalala-github",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -435,6 +516,59 @@
           "type": "boolean",
           "default": true,
           "description": "Allow the extension to send anonymous diagnostics (session + machine identifiers)"
+        },
+        "jokalala.github.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable GitHub integration plugin"
+        },
+        "jokalala.github.autoCreateIssues": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically create GitHub issues for high-severity findings"
+        },
+        "jokalala.github.autoCreateSeverityThreshold": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low", "info"],
+          "default": "high",
+          "description": "Minimum severity for auto-creating issues"
+        },
+        "jokalala.github.issueLabels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["security", "jokalala"],
+          "description": "Labels to add to created issues"
+        },
+        "jokalala.github.issueAssignees": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Default assignees for created issues"
+        },
+        "jokalala.github.linkPRComments": {
+          "type": "boolean",
+          "default": true,
+          "description": "Add comments to PRs when linking findings"
+        },
+        "jokalala.github.includeCodeSnippet": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include code snippets in issue descriptions"
+        },
+        "jokalala.github.includeRemediation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include remediation suggestions in issues"
+        },
+        "jokalala.github.defaultRepository": {
+          "type": "string",
+          "default": "",
+          "description": "Default repository (owner/repo format)"
+        },
+        "jokalala.github.enterpriseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "GitHub Enterprise URL (leave empty for github.com)"
         }
       }
     },
@@ -476,17 +610,21 @@
         {
           "id": "jokalala-container-iac",
           "name": "Container & IaC Security"
+        },
+        {
+          "id": "jokalala-github",
+          "name": "GitHub Integration"
         }
       ]
     }
   },
   "scripts": {
-    "vscode:prepublish": "pnpm run compile",
+    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "pnpm exec tsc --noEmit -p tsconfig.json && pnpm exec tsc -p tsconfig.test.json",
-    "pretest": "pnpm run compile",
-    "test": "pnpm run lint",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "pretest": "npm run compile",
+    "test": "npm run lint",
     "package": "vsce package",
     "publish": "vsce publish"
   },

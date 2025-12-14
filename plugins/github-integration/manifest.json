@@ -1,0 +1,186 @@
+{
+  "id": "jokalala-github-integration",
+  "name": "github-integration",
+  "displayName": "GitHub Integration",
+  "description": "Seamlessly integrate Jokalala security findings with GitHub. Auto-create issues from vulnerabilities, link findings to pull requests, and track remediation progress.",
+  "version": "1.0.0",
+  "author": "Jokalala Team",
+  "publisher": "jokalala",
+  "license": "MIT",
+  "homepage": "https://github.com/jkalala/jokalala-github-integration",
+  "repository": "https://github.com/jkalala/jokalala-github-integration",
+  "type": "integration",
+  "engines": {
+    "jokalala": "^2.0.0",
+    "vscode": "^1.85.0"
+  },
+  "keywords": [
+    "github",
+    "integration",
+    "issues",
+    "pull-requests",
+    "security",
+    "automation"
+  ],
+  "categories": [
+    "Integration",
+    "Source Control",
+    "Security"
+  ],
+  "icon": "resources/github-icon.png",
+  "activationEvents": [
+    "onCommand:jokalala.github.createIssue",
+    "onCommand:jokalala.github.createIssuesFromFindings",
+    "onCommand:jokalala.github.linkToPR",
+    "onCommand:jokalala.github.authenticate",
+    "onView:jokalala-github"
+  ],
+  "main": "./out/index.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "jokalala.github.authenticate",
+        "title": "Jokalala GitHub: Authenticate",
+        "icon": "$(key)"
+      },
+      {
+        "command": "jokalala.github.createIssue",
+        "title": "Jokalala GitHub: Create Issue from Finding",
+        "icon": "$(issue-opened)"
+      },
+      {
+        "command": "jokalala.github.createIssuesFromFindings",
+        "title": "Jokalala GitHub: Create Issues from All Findings",
+        "icon": "$(issues)"
+      },
+      {
+        "command": "jokalala.github.linkToPR",
+        "title": "Jokalala GitHub: Link Finding to PR",
+        "icon": "$(git-pull-request)"
+      },
+      {
+        "command": "jokalala.github.viewIssues",
+        "title": "Jokalala GitHub: View Created Issues",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "jokalala.github.syncStatus",
+        "title": "Jokalala GitHub: Sync Issue Status",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "jokalala.github.openInGitHub",
+        "title": "Open in GitHub",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "jokalala.github.refreshTree",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      }
+    ],
+    "views": {
+      "jokalala-code-analysis": [
+        {
+          "id": "jokalala-github",
+          "name": "GitHub Integration"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "jokalala.github.refreshTree",
+          "when": "view == jokalala-github",
+          "group": "navigation@1"
+        },
+        {
+          "command": "jokalala.github.createIssuesFromFindings",
+          "when": "view == jokalala-github",
+          "group": "navigation@2"
+        },
+        {
+          "command": "jokalala.github.syncStatus",
+          "when": "view == jokalala-github",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "jokalala.github.openInGitHub",
+          "when": "view == jokalala-github && viewItem =~ /^github-/",
+          "group": "inline"
+        },
+        {
+          "command": "jokalala.github.createIssue",
+          "when": "view == jokalala-issues && viewItem == issue",
+          "group": "github@1"
+        },
+        {
+          "command": "jokalala.github.linkToPR",
+          "when": "view == jokalala-issues && viewItem == issue",
+          "group": "github@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Jokalala GitHub Integration",
+      "properties": {
+        "jokalala.github.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable GitHub integration"
+        },
+        "jokalala.github.autoCreateIssues": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically create GitHub issues for critical/high severity findings"
+        },
+        "jokalala.github.autoCreateSeverityThreshold": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"],
+          "default": "high",
+          "description": "Minimum severity level for auto-creating issues"
+        },
+        "jokalala.github.issueLabels": {
+          "type": "array",
+          "default": ["security", "jokalala"],
+          "description": "Labels to add to created issues"
+        },
+        "jokalala.github.issueAssignees": {
+          "type": "array",
+          "default": [],
+          "description": "Default assignees for created issues"
+        },
+        "jokalala.github.linkPRComments": {
+          "type": "boolean",
+          "default": true,
+          "description": "Add comments to PRs when findings are linked"
+        },
+        "jokalala.github.includeCodeSnippet": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include code snippets in issue descriptions"
+        },
+        "jokalala.github.includeRemediation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include remediation suggestions in issue descriptions"
+        },
+        "jokalala.github.defaultRepository": {
+          "type": "string",
+          "default": "",
+          "description": "Default repository (owner/repo) for creating issues"
+        },
+        "jokalala.github.enterpriseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "GitHub Enterprise URL (leave empty for github.com)"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@octokit/rest": "^20.0.0"
+  }
+}

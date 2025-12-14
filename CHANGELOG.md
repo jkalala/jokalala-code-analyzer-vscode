@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2024-12-14
+
+### Added
+
+#### Plugin System Architecture
+- **Plugin Manager Service**: Full plugin lifecycle management with discovery, loading, activation, and deactivation
+- **Plugin Discovery**: Automatic scanning of built-in, user, and workspace plugin directories
+- **Plugin Context API**: Rich context for plugins including secrets storage, global/workspace state, command registration, and analysis event hooks
+- **Plugin Installation/Uninstallation**: Programmatic plugin management support
+
+#### GitHub Integration Plugin (First Official Plugin)
+- **GitHub Authentication**: OAuth flow and Personal Access Token support with secure storage
+- **Auto-Create Issues**: Automatically create GitHub issues from security findings with configurable severity threshold
+- **Issue Creation**: Well-formatted issues with severity badges, code snippets, CWE/CVE links, and remediation suggestions
+- **PR Linking**: Connect security findings to pull requests with detailed comments
+- **Batch Operations**: Create issues or link findings in bulk with progress indicators
+- **Issue Tracking**: Tree view showing all created issues with status synchronization
+- **GitHub Enterprise Support**: Configure custom GitHub Enterprise URLs
+
+#### New Commands
+- `Jokalala GitHub: Sign In` - Authenticate with GitHub
+- `Jokalala GitHub: Create Issue from Finding` - Create single issue from selected finding
+- `Jokalala GitHub: Create Issues from All Findings` - Batch create issues
+- `Jokalala GitHub: Link Finding to PR` - Add finding as PR comment
+- `Jokalala GitHub: View Created Issues` - List all created issues
+- `Jokalala GitHub: Sync Issue Status` - Update issue statuses from GitHub
+- `Jokalala GitHub: Sign Out` - Disconnect from GitHub
+- `Jokalala: Manage Plugins` - Plugin management interface
+
+#### New Configuration Options
+- `jokalala.github.enabled` - Enable/disable GitHub integration
+- `jokalala.github.autoCreateIssues` - Auto-create issues on analysis completion
+- `jokalala.github.autoCreateSeverityThreshold` - Minimum severity for auto-creation
+- `jokalala.github.issueLabels` - Default labels for created issues
+- `jokalala.github.issueAssignees` - Default assignees for issues
+- `jokalala.github.linkPRComments` - Enable PR comment linking
+- `jokalala.github.includeCodeSnippet` - Include code in issue descriptions
+- `jokalala.github.includeRemediation` - Include fix suggestions in issues
+- `jokalala.github.defaultRepository` - Default target repository
+- `jokalala.github.enterpriseUrl` - GitHub Enterprise server URL
+
+#### New Tree View
+- **GitHub Integration View**: Dedicated panel showing authentication status, created issues, linked PRs, and quick actions
+
+### Changed
+- Extension now supports extensible plugin architecture for third-party integrations
+- Analysis completion events are now broadcast to all active plugins
+- Improved extension cleanup on deactivation
+
+### Security
+- GitHub tokens stored securely using VS Code SecretStorage API
+- Plugin isolation prevents unauthorized access between plugins
+
 ## [1.1.0] - 2024-12-07
 
 ### Added
@@ -141,7 +194,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/jkalala/jokalala-code-analyzer-vscode/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/jkalala/jokalala-code-analyzer-vscode/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/jkalala/jokalala-code-analyzer-vscode/releases/tag/v2.2.0
 [1.1.0]: https://github.com/jkalala/jokalala-code-analyzer-vscode/releases/tag/v1.1.0
 [1.0.5]: https://github.com/jkalala/jokalala-code-analyzer-vscode/releases/tag/v1.0.5
 [1.0.1]: https://github.com/jkalala/jokalala-code-analyzer-vscode/releases/tag/v1.0.1
