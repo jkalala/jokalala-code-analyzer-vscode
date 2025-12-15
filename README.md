@@ -1,12 +1,13 @@
-# Jokalala Code Analysis - VS Code Extension
+# Jokalala Code Analyzer - VS Code Extension
 
-A powerful VS Code extension that provides real-time code analysis, security vulnerability detection, and intelligent recommendations powered by AI. Now with **Container/IaC security scanning**, **Software Composition Analysis (SCA)**, and support for **19 programming languages**.
+A powerful VS Code extension that provides real-time code analysis, security vulnerability detection, and intelligent recommendations powered by AI. Features **Two-Stage Analysis Pipeline**, **Container/IaC security scanning**, **Software Composition Analysis (SCA)**, **Plugin System for Custom Rules**, and support for **19+ programming languages**.
 
-[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/jkalala/jokalala-code-analyzer-vscode)
+[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](https://github.com/jkalala/jokalala-code-analyzer-vscode)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85.0+-007ACC.svg)](https://code.visualstudio.com/)
+[![Downloads](https://img.shields.io/visual-studio-marketplace/d/jokalala.jokalala-code-analysis)](https://marketplace.visualstudio.com/items?itemName=jokalala.jokalala-code-analysis)
 
-## 🚀 Quick Start
+## Quick Start
 
 **New to Jokalala?** Check out our [Getting Started Guide](GETTING_STARTED.md) for step-by-step setup instructions!
 
@@ -15,22 +16,47 @@ A powerful VS Code extension that provides real-time code analysis, security vul
 3. **Configure** via Command Palette: `Jokalala: Show Settings`
 4. **Analyze** your code with `Ctrl+Alt+A` / `Cmd+Alt+A`
 
+## What's New in v2.3.0
+
+- **Two-Stage Analysis Pipeline**: Quick static analysis followed by deep AI-powered analysis
+- **Rust Language Support**: Full security analysis with framework detection (Actix, Rocket, Axum, Warp)
+- **Plugin System**: Create and manage custom security rules and extensions
+- **Offline Analysis Mode**: 100+ security rules bundled locally for air-gapped environments
+- **CVE Auto-Refresh**: Automatic CVE database updates with incremental analysis
+- **SBOM Generation**: CycloneDX 1.5 and SPDX 2.3 support
+
 ## Features
 
-### 🔍 Real-time Code Analysis
+### Two-Stage Analysis Pipeline
+
+Our innovative analysis approach combines speed with depth:
+
+1. **Quick Stage**: Fast static analysis with 100+ bundled security rules
+2. **Deep Stage**: AI-powered semantic analysis for complex vulnerabilities
+
+Benefits:
+
+- Instant feedback on common issues
+- Deep analysis runs in background
+- Works offline with fallback to local rules
+- Prioritized results based on confidence scoring
+
+### Real-time Code Analysis
 
 - **File Analysis**: Analyze individual files for security vulnerabilities, code quality issues, and best practice violations
 - **Selection Analysis**: Analyze specific code selections for targeted feedback
 - **Project Analysis**: Comprehensive analysis of entire projects with prioritized issue reporting
+- **Incremental Analysis**: Only re-analyze changed files for faster feedback
 
-### 🛡️ Security Vulnerability Detection
+### Security Vulnerability Detection
 
 - **50+ Vulnerability Types**: SQL injection, XSS, command injection, path traversal, and more
 - **OWASP Top 10 Coverage**: Comprehensive detection of all OWASP Top 10 vulnerabilities
 - **CWE/CVE Mapping**: Industry-standard vulnerability classification
 - **CISA KEV & EPSS**: Prioritization using exploit data and probability scores
+- **Auto-Fix Suggestions**: One-click fixes for many vulnerability types
 
-### 🐳 Container & Infrastructure-as-Code Security (NEW)
+### Container & Infrastructure-as-Code Security
 
 Scan your infrastructure configurations for security misconfigurations:
 
@@ -41,47 +67,95 @@ Scan your infrastructure configurations for security misconfigurations:
 - **CloudFormation**: AWS infrastructure template security analysis
 - **Helm Charts**: Kubernetes package security scanning
 
-### 📦 Software Composition Analysis (SCA) (NEW)
+### Software Composition Analysis (SCA)
 
 Secure your dependencies across multiple ecosystems:
 
-- **Multi-ecosystem Support**: npm, pip, Maven, Gradle, Go, Rust, Ruby, PHP, .NET
+- **Multi-ecosystem Support**: npm, pip, Maven, Gradle, Go, Rust (Cargo), Ruby, PHP, .NET
 - **NVD Integration**: Real-time CVE lookups with CVSS scores
 - **SBOM Generation**: CycloneDX 1.5 and SPDX 2.3 format support
 - **License Compliance**: Detect high-risk (GPL, AGPL) and medium-risk licenses
+- **Dependency Graph**: Visualize transitive dependencies
 
-### 🌐 Language Support (19 Languages)
+### Plugin System for Custom Rules
 
-**Web & Frontend:**
-- JavaScript, TypeScript, Vue.js SFC, Svelte/SvelteKit
+Extend the analyzer with your own security rules:
 
-**Backend & Systems:**
-- Python, Java, Kotlin, Scala, Go, Rust, C, C++, C#, PHP, Ruby
+- **Custom Rule Engine**: Create pattern-based or AST-based rules
+- **Rule Packs**: Bundle and share collections of rules
+- **Marketplace Integration**: Browse and install community plugins
+- **Language Plugins**: Add support for additional languages
+- **Hook System**: Integrate with CI/CD pipelines
 
-**Mobile:**
-- Swift, Objective-C, Dart/Flutter
+### Language Support (19+ Languages)
 
-**Blockchain:**
-- Solidity (30+ smart contract patterns, SWC Registry compliant)
+| Category                | Languages                   | Features                                                   |
+| ----------------------- | --------------------------- | ---------------------------------------------------------- |
+| **Web**                 | JavaScript, TypeScript      | XSS, SQL injection, DOM-based attacks, prototype pollution |
+| **Frontend Frameworks** | Vue.js, Svelte              | v-html XSS, @html directive, SSR security                  |
+| **Backend**             | Python, Java, Go, PHP, Ruby | Injection, deserialization, auth issues                    |
+| **JVM**                 | Kotlin, Scala               | Play Framework, Akka, Spark security                       |
+| **Systems**             | C, C++, **Rust**            | Buffer overflow, memory safety, unsafe code analysis       |
+| **Mobile**              | Swift, Objective-C, Dart    | Keychain security, ATS compliance, WebView                 |
+| **Enterprise**          | C#                          | .NET-specific vulnerabilities                              |
+| **Blockchain**          | Solidity                    | Reentrancy, overflow, access control (30+ patterns)        |
 
-### 📊 Interactive Tree Views
+### Rust Language Support (NEW)
+
+Comprehensive security analysis for Rust with framework detection:
+
+**Web Frameworks:**
+
+- Actix Web, Rocket, Axum, Warp
+
+**Database/ORM:**
+
+- Diesel, SQLx, Sea-ORM
+
+**Runtime:**
+
+- Tokio async runtime patterns
+
+**Security Patterns:**
+
+- Unsafe code analysis
+- Memory safety violations
+- Cryptographic security
+- SQL injection (even with ORMs)
+- Command injection
+- FFI security
+- Deserialization (Serde)
+
+### Interactive Tree Views (8 Views)
 
 - **Issues View**: Browse issues organized by severity with one-click navigation
-- **CVE Database**: Search and scan for known vulnerabilities
+- **CVE Database**: Search and scan for known vulnerabilities with auto-refresh
 - **Recommendations**: AI-powered improvement suggestions
 - **Code Metrics**: Quality and security risk scores
 - **Refactoring**: AI-powered code improvements with diff preview
 - **Dependencies (SCA)**: Vulnerable dependency visualization
 - **Container & IaC Security**: Infrastructure security issues by type or severity
+- **Plugins & Custom Rules**: Manage and configure your custom rules
 
-### ⚡ Performance Features
+### Performance Features
 
 - **Intelligent Caching**: Reduce API calls with configurable caching (TTL and size limits)
 - **Request Queue**: Priority-based request management for optimal performance
 - **Circuit Breaker**: Automatic failure detection and recovery
 - **Retry Logic**: Exponential backoff for transient failures
+- **Worker Pool**: Parallel analysis for large projects
+- **Streaming Analysis**: Progressive results for large files
 
-### 🔐 Security Features
+### Offline Analysis Mode
+
+Enterprise-grade offline capability:
+
+- **100+ Bundled Rules**: Core security rules work without internet
+- **Zero Network Dependency**: Full analysis in air-gapped environments
+- **Automatic Fallback**: Seamlessly switches between online and offline modes
+- **Local CVE Cache**: Cached vulnerability data for offline lookups
+
+### Security Features
 
 - **Secure API Key Storage**: Uses VS Code's SecretStorage API for secure credential management
 - **Input Sanitization**: XSS prevention with HTML escaping
@@ -106,8 +180,8 @@ Search for "Jokalala Code Analyzer" in VS Code Extensions.
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd packages/vscode-code-analysis
+git clone https://github.com/jkalala/jokalala-code-analyzer-vscode.git
+cd jokalala-code-analyzer-vscode
 
 # Install dependencies
 npm install
@@ -124,7 +198,7 @@ code --install-extension jokalala-code-analysis-*.vsix
 
 ## Configuration
 
-### 🔑 Getting Your API Key
+### Getting Your API Key
 
 **For Individual Developers:**
 
@@ -141,7 +215,7 @@ Contact <sales@jokalala.com> for team licenses and custom deployments.
 
 Deploy your own backend and generate keys from your admin dashboard.
 
-### ⚙️ Configuration Methods
+### Configuration Methods
 
 #### Method 1: Quick Setup (Recommended)
 
@@ -172,11 +246,14 @@ Deploy your own backend and generate keys from your admin dashboard.
   "jokalala.maxFileSize": 200000,
   "jokalala.maxProjectFiles": 40,
   "jokalala.requestTimeout": 60000,
-  "jokalala.enableTelemetry": true
+  "jokalala.enableTelemetry": true,
+  "jokalala.plugins.enabled": true,
+  "jokalala.plugins.autoUpdate": false,
+  "jokalala.plugins.trustedPublishers": ["jokalala", "official"]
 }
 ```
 
-**🔒 Security Note**: Use the `Jokalala: Set API Key` command for secure credential storage via VS Code's encrypted SecretStorage.
+**Security Note**: Use the `Jokalala: Set API Key` command for secure credential storage via VS Code's encrypted SecretStorage.
 
 ## Usage
 
@@ -185,29 +262,34 @@ Deploy your own backend and generate keys from your admin dashboard.
 Access commands via Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`):
 
 **Code Analysis:**
+
 - `Jokalala: Analyze Current File` - Analyze the currently open file
 - `Jokalala: Analyze Selection` - Analyze the selected code
 - `Jokalala: Analyze Entire Project` - Analyze the entire workspace
 - `Jokalala: Clear Analysis Cache` - Clear the analysis cache
 
 **CVE Database:**
+
 - `Jokalala: Search CVE/CWE Database` - Search known vulnerabilities
 - `Jokalala: Scan Current File for CVEs` - Find CVEs in current file
 - `Jokalala: Clear CVE Results` - Clear CVE scan results
 
 **Refactoring:**
+
 - `Jokalala: Analyze for Refactoring` - Get AI refactoring suggestions
 - `Jokalala: Quick Fix Issue` - Apply quick fixes
 - `Jokalala: Apply All Safe Fixes` - Batch apply fixes
 - `Jokalala: Clear Refactoring Results` - Clear refactoring data
 
 **Dependencies (SCA):**
+
 - `Jokalala: Scan Dependencies (SCA)` - Scan project dependencies
 - `Jokalala: Generate SBOM` - Generate Software Bill of Materials
 - `Jokalala: Check License Compliance` - Check dependency licenses
 - `Jokalala: Clear SCA Results` - Clear SCA data
 
 **Container & IaC Security:**
+
 - `Jokalala: Scan Container/IaC Files` - Scan all infrastructure files
 - `Jokalala: Scan Dockerfiles` - Scan only Dockerfile configurations
 - `Jokalala: Scan Kubernetes Manifests` - Scan Kubernetes YAML files
@@ -215,7 +297,16 @@ Access commands via Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`):
 - `Jokalala: Scan Current Container/IaC File` - Scan currently open file
 - `Jokalala: Clear Container/IaC Results` - Clear infrastructure scan data
 
+**Plugins & Custom Rules:**
+
+- `Jokalala: Create New Plugin` - Create a custom plugin
+- `Jokalala: Import Custom Rules` - Import rules from file
+- `Jokalala: Export Custom Rules` - Export rules to file
+- `Jokalala: Reload Plugins` - Reload all plugins
+- `Jokalala: Open Plugins Folder` - Open plugins directory
+
 **Settings:**
+
 - `Jokalala: Open Settings` - Open extension settings
 - `Jokalala: Set API Key` - Securely store API key
 
@@ -226,7 +317,7 @@ Access commands via Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`):
 
 ### Tree Views
 
-The extension adds seven tree views to the sidebar:
+The extension adds eight tree views to the sidebar:
 
 1. **Issues** - Detected security issues organized by severity
 2. **CVE Database** - Search and browse known vulnerabilities
@@ -235,6 +326,7 @@ The extension adds seven tree views to the sidebar:
 5. **Refactoring** - AI-powered refactoring opportunities with one-click fixes
 6. **Dependencies (SCA)** - Vulnerable dependencies with severity indicators
 7. **Container & IaC Security** - Infrastructure security issues organized by type or severity
+8. **Plugins & Custom Rules** - Manage custom rules and plugins
 
 ### Code Actions
 
@@ -244,19 +336,6 @@ When issues are detected, the extension provides quick fixes:
 - **Preview Diff** - Preview changes before applying
 - **Mark as False Positive** - Report incorrect detections
 - **Mark as Helpful** - Provide positive feedback
-
-## Supported Languages
-
-| Category | Languages | Features |
-|----------|-----------|----------|
-| **Web** | JavaScript, TypeScript | XSS, SQL injection, DOM-based attacks |
-| **Frontend Frameworks** | Vue.js, Svelte | v-html XSS, @html directive, SSR security |
-| **Backend** | Python, Java, Go, PHP, Ruby | Injection, deserialization, auth issues |
-| **JVM** | Kotlin, Scala | Play Framework, Akka, Spark security |
-| **Systems** | C, C++, Rust | Buffer overflow, memory safety |
-| **Mobile** | Swift, Objective-C, Dart | Keychain security, ATS compliance, WebView |
-| **Enterprise** | C# | .NET-specific vulnerabilities |
-| **Blockchain** | Solidity | Reentrancy, overflow, access control (30+ patterns) |
 
 ## Infrastructure Security
 
@@ -293,6 +372,43 @@ When issues are detected, the extension provides quick fixes:
 - Missing encryption settings
 - Security group misconfigurations
 
+## Creating Custom Rules
+
+### Plugin Structure
+
+```
+my-plugin/
+├── jokalala-plugin.json   # Plugin manifest
+├── rules/
+│   ├── custom-rule-1.json
+│   └── custom-rule-2.json
+└── src/
+    └── index.ts           # Optional programmatic rules
+```
+
+### Example Rule Definition
+
+```json
+{
+  "id": "custom-sql-injection",
+  "name": "Custom SQL Injection Detection",
+  "description": "Detects SQL injection in custom ORM",
+  "severity": "critical",
+  "category": "security",
+  "cwe": ["CWE-89"],
+  "owasp": ["A03:2021"],
+  "languages": ["typescript", "javascript"],
+  "patterns": [
+    {
+      "type": "regex",
+      "pattern": "customQuery\\s*\\([^)]*\\$\\{",
+      "message": "Potential SQL injection via string interpolation"
+    }
+  ],
+  "suggestion": "Use parameterized queries instead of string interpolation"
+}
+```
+
 ## Development
 
 ### Prerequisites
@@ -327,6 +443,8 @@ npm run package
 - **CodeAnalysisService** - API communication and request management
 - **ContainerIaCService** - Infrastructure security scanning
 - **RefactoringService** - AI-powered code improvements
+- **PluginManager** - Plugin lifecycle and custom rules
+- **OfflineAnalyzer** - Local analysis engine with 100+ rules
 - **ConfigurationService** - Settings management with validation
 - **Logger** - Centralized logging with PII anonymization
 - **SecurityService** - Secure credential storage and input sanitization
@@ -338,25 +456,38 @@ npm run package
 - **RefactoringTreeProvider** - Refactoring suggestions view
 - **SCATreeProvider** - Dependencies view
 - **ContainerIaCTreeProvider** - Infrastructure security view
+- **PluginsTreeProvider** - Plugins and custom rules view
 
 ### Project Structure
 
 ```text
 src/
 ├── commands/           # Command implementations
+├── core/               # Core analysis engines
+│   ├── custom-rules.ts
+│   ├── offline-analyzer.ts
+│   ├── incremental-analyzer.ts
+│   ├── streaming-analyzer.ts
+│   └── worker-pool.ts
 ├── interfaces/         # TypeScript interfaces
 ├── providers/          # Tree view and code action providers
 │   ├── issue-tree-provider.ts
 │   ├── cve-tree-provider.ts
 │   ├── refactoring-tree-provider.ts
 │   ├── sca-tree-provider.ts
-│   └── container-iac-tree-provider.ts
+│   ├── container-iac-tree-provider.ts
+│   └── plugins-tree-provider.ts
 ├── services/           # Core business logic
 │   ├── code-analysis-service.ts
 │   ├── container-iac-service.ts
+│   ├── plugin-manager.ts
 │   └── refactoring-service.ts
 ├── test/               # Test suites
 ├── utils/              # Utility functions
+│   ├── circuit-breaker.ts
+│   ├── confidence-calculator.ts
+│   ├── false-positive-detector.ts
+│   └── quality-gate.ts
 └── extension.ts        # Extension entry point
 ```
 
@@ -462,6 +593,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Documentation**: [https://docs.jokalala.com](https://docs.jokalala.com)
 - **Issues**: [GitHub Issues](https://github.com/jkalala/jokalala-code-analyzer-vscode/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/jkalala/jokalala-code-analyzer-vscode/discussions)
 - **Email**: <support@jokalala.com>
 - **Discord**: [Join our community](https://discord.gg/jokalala)
 
@@ -478,4 +610,4 @@ See [CHANGELOG.md](CHANGELOG.md) for a list of changes in each version.
 
 ---
 
-Made with ❤️ by the Jokalala Team
+Made with care by the Jokalala Team
