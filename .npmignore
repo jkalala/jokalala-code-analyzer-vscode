@@ -1,0 +1,65 @@
+# Source files
+src/
+*.ts
+!dist/**/*.js
+tsconfig.json
+tsconfig.test.json
+
+# Testing
+test/
+coverage/
+.nyc_output/
+*.spec.ts
+*.test.ts
+
+# Build and CI
+.github/
+.vscode/
+.vscode-test/
+dist/
+out/
+*.vsix
+
+# Documentation (keep README only)
+docs/
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+API_KEY_SETUP_GUIDE.md
+DEVELOPMENT_GUIDE.md
+VSCODE_PLUGIN_DEVELOPMENT_GUIDE.md
+ARCHITECTURE_ASSESSMENT.md
+PROJECT_STRUCTURE.md
+PROJECT_STRUCTURE_VISUAL.md
+COMPREHENSIVE_AUDIT_2025.md
+CONFIGURATION_EXAMPLES.md
+SETUP_SUMMARY.md
+PUBLISHING.md
+VSCODE-MARKETPLACE-RELEASE.md
+EXTENSION_PACKAGING_COMPLETE.md
+
+# Config files
+.eslintrc.json
+.prettierrc
+.editorconfig
+.env*
+tsconfig.json
+
+# Dependencies
+node_modules/
+*.lock
+*.log
+
+# Scripts
+scripts/
+install.ps1
+install.sh
+
+# Other
+.DS_Store
+Thumbs.db
+*.bak
+*.tmp
+.git/
+.gitignore
+images/

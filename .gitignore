@@ -1,7 +1,70 @@
+# Dependencies
 node_modules/
+yarn.lock
+package-lock.json
+pnpm-lock.yaml
+.pnp
+.pnp.js
+
+# Build and distribution
 dist/
+out/
+build/
 *.vsix
 .vscode-test/
-*.log
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
+.vs/
+.vscode-settings.json
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+.env.production.local
+.env.development.local
+.envrc
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.npm
+
+# Testing
+coverage/
+.nyc_output/
+.nycrc
+*.lcov
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Plugin dependencies
 plugins/*/node_modules/
+plugins/*/dist/
+
+# System files
+Thumbs.db
+.vscode-test/
+.vscode/
+out/
