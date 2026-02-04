@@ -11,18 +11,22 @@ Detect security vulnerabilities, code quality issues, and best practice violatio
 ## 🚀 Quick Start
 
 ### 1. Install
+
 - Open VS Code
 - Go to Extensions (`Ctrl+Shift+X` / `Cmd+Shift+X`)
 - Search for "Jokalala Code Analyzer"
 - Click Install
 
 ### 2. Get API Key
+
 Visit [jokalala.com](https://jokalala.com) to generate your free API key.
 
 ### 3. Configure
+
 Open Command Palette (`Ctrl+Shift+P`) → **Jokalala: Show Settings** → Enter your API key
 
 ### 4. Analyze
+
 Right-click any file → **Analyze with Jokalala**
 
 ## ✨ Features
@@ -57,9 +61,11 @@ See [SECURITY.md](docs/security/SECURITY.md) for details.
 ## 🛠️ Installation
 
 ### From Marketplace (Recommended)
+
 Install directly from [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=jokalala.jokalala-code-analysis)
 
 ### Manual Installation
+
 ```bash
 # Clone repository
 git clone https://github.com/jkalala/jokalala-code-analyzer-vscode.git
@@ -80,11 +86,53 @@ vsce package
 
 ## 🤝 Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](docs/community/CONTRIBUTING.md) for:
-- Development setup
-- Code guidelines
+We ❤️ contributions from the community! Whether you're fixing bugs, adding features, or improving documentation, we'd love to have you involved.
+
+### Ways to Contribute
+
+- 🐛 **Report Bugs** - Found an issue? [Open an issue](https://github.com/jkalala/jokalala-code-analyzer-vscode/issues)
+- 🎯 **Request Features** - Have an idea? [Start a discussion](https://github.com/jkalala/jokalala-code-analyzer-vscode/discussions)
+- 🔨 **Fix Bugs or Add Features** - Check [good first issues](https://github.com/jkalala/jokalala-code-analyzer-vscode/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+- 📚 **Improve Docs** - Documentation improvements are always welcome
+- ✅ **Review PRs** - Help review and test pull requests
+
+### Getting Started as a Developer
+
+1. **Read** [CONTRIBUTING.md](docs/community/CONTRIBUTING.md) for detailed guidelines
+2. **Fork** the repository
+3. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+4. **Commit** your changes (`git commit -m 'Add amazing feature'`)
+5. **Push** to your fork (`git push origin feature/amazing-feature`)
+6. **Open** a Pull Request
+
+### Development Quick Start
+
+```bash
+# Clone and setup
+git clone https://github.com/YOUR_USERNAME/jokalala-code-analyzer-vscode.git
+cd jokalala-code-analyzer-vscode
+
+# Install dependencies (requires pnpm)
+pnpm install
+
+# Build
+pnpm run compile
+
+# Run tests
+pnpm test
+
+# Start development
+code .
+```
+
+### For More Details
+
+See [CONTRIBUTING.md](docs/community/CONTRIBUTING.md) for:
+- Code style guidelines
 - Testing requirements
-- Submission process
+- Commit conventions
+- PR process
+- Architecture overview
 
 ## 📄 License
 
@@ -94,7 +142,7 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 - **Issues**: [GitHub Issues](https://github.com/jkalala/jokalala-code-analyzer-vscode/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/jkalala/jokalala-code-analyzer-vscode/discussions)
-- **Email**: support@jokalala.com
+- **Email**: <support@jokalala.com>
 
 ## 📖 More Information
 
