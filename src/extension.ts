@@ -21,6 +21,7 @@ import { SCATreeProvider, registerSCATreeView } from './providers/sca-tree-provi
 import { ContainerIaCTreeProvider, registerContainerIaCTreeView } from './providers/container-iac-tree-provider'
 import { PluginsTreeProvider, registerPluginsTreeView, registerPluginCommands } from './providers/plugins-tree-provider'
 import { registerEnhancedCodeActionProvider } from './providers/enhanced-code-action-provider'
+import { AuthService } from './services/auth-service'
 import { CodeAnalysisService } from './services/code-analysis-service'
 import { ConfigurationService } from './services/configuration-service'
 import { DiagnosticsManager } from './services/diagnostics-manager'
@@ -34,6 +35,7 @@ import { qualityGate } from './utils/quality-gate'
 import { falsePositiveDetector } from './utils/false-positive-detector'
 import { intelligencePrioritizer } from './utils/intelligence-prioritizer'
 
+let authService: AuthService
 let diagnosticsManager: DiagnosticsManager
 let codeAnalysisService: CodeAnalysisService
 let configurationService: ConfigurationService
@@ -57,6 +59,28 @@ export async function activate(context: vscode.ExtensionContext) {
   logger.info('Activating Jokalala Code Analysis extension')
 
   try {
+    // Auth — initialize first so token is available for all API calls
+    authService = new AuthService(context)
+    await authService.initialize()
+
+    // Register URI handler for VS Code deep-link callback
+    // vscode://jokalala.code-analyzer/auth?token=<jwt>
+    context.subscriptions.push(
+      vscode.window.registerUriHandler({
+        handleUri(uri: vscode.Uri) {
+          if (uri.path === '/auth') {
+            authService.handleAuthCallback(uri)
+          }
+        },
+      })
+    )
+
+    // Register sign-in / sign-out commands
+    context.subscriptions.push(
+      vscode.commands.registerCommand('jokalala.signIn', () => authService.signIn()),
+      vscode.commands.registerCommand('jokalala.signOut', () => authService.signOut()),
+    )
+
     configurationService = new ConfigurationService()
     diagnosticsManager = new DiagnosticsManager()
     codeAnalysisService = new CodeAnalysisService(configurationService, logger)
