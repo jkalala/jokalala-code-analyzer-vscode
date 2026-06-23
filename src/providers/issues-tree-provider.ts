@@ -271,9 +271,9 @@ export class IssuesTreeProvider
 
   private createSummaryNode(): IssueTreeItem {
     const s = this.summaryData!
-    const scoreText =
-      s.overallScore !== undefined ? ` • Score: ${s.overallScore}/100` : ''
-    const label = `📊 Summary: ${s.totalIssues} issues in ${s.totalFiles} files${scoreText}`
+    const filesWithIssues = this.fileResults.filter(f => f.issues.length > 0).length
+    const scoreText = s.overallScore !== undefined ? ` • Score: ${s.overallScore}/100` : ''
+    const label = `📊 Files with Issues: ${filesWithIssues}/${s.totalFiles} • ${s.totalIssues} total${scoreText}`
 
     const item = new IssueTreeItem(
       label,
