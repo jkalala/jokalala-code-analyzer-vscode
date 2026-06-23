@@ -93,7 +93,18 @@ export class DiagnosticsManager {
         const src: string = issue.source
         const sourceLabel =
           src === 'both' ? '[AI+Rule]' : src === 'llm' ? '[AI]' : '[Rule]'
-        const labelledMessage = `${sourceLabel} ${issue.message || 'Unknown issue'}`
+
+        // Confidence suffix — only shown for medium/low confidence so high-confidence
+        // findings stay clean
+        const confidence: number | undefined = (issue as { priorityScore?: number }).priorityScore
+        let confidenceSuffix = ''
+        if (confidence !== undefined) {
+          const pct = Math.round(confidence * 100)
+          if (pct < 50) confidenceSuffix = ' (possible issue — low confidence)'
+          else if (pct < 80) confidenceSuffix = ' (review recommended)'
+        }
+
+        const labelledMessage = `${sourceLabel} ${issue.message || 'Unknown issue'}${confidenceSuffix}`
 
         const diagnostic = new vscode.Diagnostic(
           range,
