@@ -4,6 +4,7 @@ import {
   Issue,
 } from '../interfaces/code-analysis-service.interface'
 import { debounce } from '../utils/debounce'
+import { DeduplicationService } from './deduplication-service'
 
 /**
  * Manages VS Code diagnostics for code analysis issues
@@ -35,10 +36,8 @@ export class DiagnosticsManager {
    * Multiple calls within the debounce window will be batched
    */
   updateDiagnostics(uri: vscode.Uri, issues: Issue[]): void {
-    // Add to pending updates
-    this.pendingUpdates.set(uri.toString(), issues)
-
-    // Trigger debounced flush
+    const deduped = DeduplicationService.deduplicate(issues)
+    this.pendingUpdates.set(uri.toString(), deduped)
     this.debouncedFlush()
   }
 
@@ -47,7 +46,8 @@ export class DiagnosticsManager {
    * Use for critical updates that need immediate feedback
    */
   updateDiagnosticsImmediate(uri: vscode.Uri, issues: Issue[]): void {
-    const diagnostics = this.createDiagnostics(uri, issues)
+    const deduped = DeduplicationService.deduplicate(issues)
+    const diagnostics = this.createDiagnostics(uri, deduped)
     this.diagnosticCollection.set(uri, diagnostics)
   }
 
@@ -87,9 +87,18 @@ export class DiagnosticsManager {
         // Normalize location data
         const range = this.normalizeLocation(issue)
 
+        // Prefix message with source badge so users can see AI vs. static origin
+        const sourceLabel =
+          (issue as { source: string }).source === 'both'
+            ? '[AI+Rule]'
+            : (issue as { source: string }).source === 'llm'
+              ? '[AI]'
+              : '[Rule]'
+        const labelledMessage = `${sourceLabel} ${issue.message || 'Unknown issue'}`
+
         const diagnostic = new vscode.Diagnostic(
           range,
-          issue.message || 'Unknown issue',
+          labelledMessage,
           this.mapSeverity(issue.severity)
         )
 
