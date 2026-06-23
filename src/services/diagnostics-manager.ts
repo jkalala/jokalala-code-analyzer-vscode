@@ -4,7 +4,7 @@ import {
   Issue,
 } from '../interfaces/code-analysis-service.interface'
 import { debounce } from '../utils/debounce'
-import { DeduplicationService, type DeduplicatedIssue } from './deduplication-service'
+import { DeduplicationService } from './deduplication-service'
 
 /**
  * Manages VS Code diagnostics for code analysis issues
@@ -36,7 +36,8 @@ export class DiagnosticsManager {
    * Multiple calls within the debounce window will be batched
    */
   updateDiagnostics(uri: vscode.Uri, issues: Issue[]): void {
-    const deduped = DeduplicationService.deduplicate(issues)
+    // Deduplicate before queuing — stores as Issue[] via cast (source is widened at runtime)
+    const deduped = DeduplicationService.deduplicate(issues) as unknown as Issue[]
     this.pendingUpdates.set(uri.toString(), deduped)
     this.debouncedFlush()
   }
@@ -46,7 +47,7 @@ export class DiagnosticsManager {
    * Use for critical updates that need immediate feedback
    */
   updateDiagnosticsImmediate(uri: vscode.Uri, issues: Issue[]): void {
-    const deduped = DeduplicationService.deduplicate(issues)
+    const deduped = DeduplicationService.deduplicate(issues) as unknown as Issue[]
     const diagnostics = this.createDiagnostics(uri, deduped)
     this.diagnosticCollection.set(uri, diagnostics)
   }
@@ -73,10 +74,11 @@ export class DiagnosticsManager {
 
   /**
    * Create VS Code diagnostics from issues
+   * issues may contain DeduplicatedIssue entries (source === 'both') at runtime
    */
   private createDiagnostics(
     uri: vscode.Uri,
-    issues: DeduplicatedIssue[]
+    issues: Issue[]
   ): vscode.Diagnostic[] {
     return issues
       .filter(issue => issue && issue.message) // Filter out invalid issues
@@ -88,7 +90,7 @@ export class DiagnosticsManager {
         const range = this.normalizeLocation(issue)
 
         // Prefix message with source badge so users can see AI vs. static origin
-        const src = (issue as DeduplicatedIssue).source
+        const src: string = issue.source
         const sourceLabel =
           src === 'both' ? '[AI+Rule]' : src === 'llm' ? '[AI]' : '[Rule]'
         const labelledMessage = `${sourceLabel} ${issue.message || 'Unknown issue'}`
