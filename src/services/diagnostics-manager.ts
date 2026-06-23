@@ -4,7 +4,7 @@ import {
   Issue,
 } from '../interfaces/code-analysis-service.interface'
 import { debounce } from '../utils/debounce'
-import { DeduplicationService } from './deduplication-service'
+import { DeduplicationService, type DeduplicatedIssue } from './deduplication-service'
 
 /**
  * Manages VS Code diagnostics for code analysis issues
@@ -76,7 +76,7 @@ export class DiagnosticsManager {
    */
   private createDiagnostics(
     uri: vscode.Uri,
-    issues: Issue[]
+    issues: DeduplicatedIssue[]
   ): vscode.Diagnostic[] {
     return issues
       .filter(issue => issue && issue.message) // Filter out invalid issues
@@ -88,12 +88,9 @@ export class DiagnosticsManager {
         const range = this.normalizeLocation(issue)
 
         // Prefix message with source badge so users can see AI vs. static origin
+        const src = (issue as DeduplicatedIssue).source
         const sourceLabel =
-          (issue as { source: string }).source === 'both'
-            ? '[AI+Rule]'
-            : (issue as { source: string }).source === 'llm'
-              ? '[AI]'
-              : '[Rule]'
+          src === 'both' ? '[AI+Rule]' : src === 'llm' ? '[AI]' : '[Rule]'
         const labelledMessage = `${sourceLabel} ${issue.message || 'Unknown issue'}`
 
         const diagnostic = new vscode.Diagnostic(

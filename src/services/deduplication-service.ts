@@ -22,16 +22,27 @@ const SEVERITY_RANK: Record<Issue['severity'], number> = {
   info: 1,
 }
 
+/** Extended source type that marks issues detected by both pipeline stages */
+export type DeduplicatedSource = 'static' | 'llm' | 'both'
+
+/**
+ * Issue with an extended source that can be 'both' when static + LLM agree.
+ * Omits the base `source` field and replaces it with the wider union.
+ */
+export type DeduplicatedIssue = Omit<Issue, 'source'> & { source: DeduplicatedSource }
+
 function normaliseCategory(category: string): string {
   return category.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-function deduplicationKey(issue: Issue): string {
+function deduplicationKey(issue: Issue | DeduplicatedIssue): string {
   const line = issue.line ?? issue.location?.startLine ?? 0
   return `${line}:${normaliseCategory(issue.category)}`
 }
 
-export type DeduplicatedIssue = Issue & { source: 'static' | 'llm' | 'both' }
+function toDeduped(issue: Issue): DeduplicatedIssue {
+  return issue as unknown as DeduplicatedIssue
+}
 
 export class DeduplicationService {
   /**
@@ -46,26 +57,24 @@ export class DeduplicationService {
       const existing = map.get(key)
 
       if (!existing) {
-        map.set(key, { ...issue, source: issue.source as DeduplicatedIssue['source'] })
+        map.set(key, toDeduped(issue))
         continue
       }
 
       const existingRank = SEVERITY_RANK[existing.severity]
       const incomingRank = SEVERITY_RANK[issue.severity]
+      const sourcesDiffer = existing.source !== issue.source
 
       if (incomingRank > existingRank) {
-        // Incoming is more severe — take it, preserve 'both' if applicable
-        const source: DeduplicatedIssue['source'] =
-          existing.source !== issue.source ? 'both' : issue.source
-        map.set(key, { ...issue, source })
+        // Incoming is more severe — take it, mark 'both' if stages differ
+        const source: DeduplicatedSource = sourcesDiffer ? 'both' : issue.source
+        map.set(key, { ...toDeduped(issue), source })
       } else if (incomingRank === existingRank) {
-        // Same severity — mark as confirmed by both stages
-        const source: DeduplicatedIssue['source'] =
-          existing.source !== issue.source ? 'both' : existing.source
+        // Same severity — mark as confirmed by both stages if they differ
+        const source: DeduplicatedSource = sourcesDiffer ? 'both' : existing.source
         map.set(key, { ...existing, source })
-      }
-      // Existing is more severe — keep it, still mark 'both' if stages differ
-      else if (existing.source !== issue.source) {
+      } else if (sourcesDiffer) {
+        // Existing is more severe but other stage also caught it
         map.set(key, { ...existing, source: 'both' })
       }
     }
