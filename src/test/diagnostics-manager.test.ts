@@ -56,7 +56,8 @@ suite('DiagnosticsManager Test Suite', () => {
       const diagnostics = diagnosticsManager.getDiagnostics(testUri)
       assert.ok(diagnostics, 'Diagnostics should exist')
       assert.strictEqual(diagnostics.length, 1)
-      assert.strictEqual(diagnostics[0]?.message, 'Issue 2')
+      // DiagnosticsManager adds [Rule]/[AI]/[AI+Rule] source badges to messages
+      assert.ok(diagnostics[0]?.message.includes('Issue 2'), 'Message should contain Issue 2')
     })
 
     test('should update immediately when using updateDiagnosticsImmediate', () => {
@@ -76,7 +77,7 @@ suite('DiagnosticsManager Test Suite', () => {
       const diagnostics = diagnosticsManager.getDiagnostics(testUri)
       assert.ok(diagnostics, 'Diagnostics should exist')
       assert.strictEqual(diagnostics.length, 1)
-      assert.strictEqual(diagnostics[0]?.message, 'Critical issue')
+      assert.ok(diagnostics[0]?.message.includes('Critical issue'), 'Message should contain Critical issue')
     })
   })
 

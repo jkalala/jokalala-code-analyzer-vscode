@@ -215,8 +215,10 @@ export class AuditService {
   private sanitiseDetails(
     details: Record<string, unknown>
   ): Record<string, unknown> {
+    // All keys stored lowercase so that `k.toLowerCase()` lookup works for
+    // camelCase variants like 'apiKey' → 'apikey'.
     const REDACT_KEYS = new Set([
-      'token', 'apiKey', 'password', 'secret', 'code', 'content',
+      'token', 'apikey', 'password', 'secret', 'code', 'content',
       'authorization', 'credentials', 'key',
     ])
     const sanitised: Record<string, unknown> = {}

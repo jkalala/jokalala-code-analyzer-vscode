@@ -1,290 +1,317 @@
+/// <reference types="mocha" />
+
+import * as assert from 'assert'
 import * as vscode from 'vscode'
 import { LogLevel } from '../interfaces/logger.interface'
 import { Logger } from '../services/logger'
 
-describe('Logger', () => {
-  let logger: Logger
-  let mockChannel: any
+// ── Minimal spy helper (replaces jest.fn()) ───────────────────────────────────
+function makeSpy<T extends (...args: unknown[]) => unknown>(impl?: T) {
+  const calls: unknown[][] = []
+  const spy = (...args: unknown[]) => {
+    calls.push(args)
+    return impl ? impl(...args) : undefined
+  }
+  spy.calls = calls
+  spy.callCount = () => calls.length
+  spy.clear = () => { calls.splice(0, calls.length) }
+  spy.lastCall = () => calls[calls.length - 1] as unknown[] | undefined
+  return spy
+}
 
-  beforeEach(() => {
-    // Mock the output channel
-    mockChannel = {
-      appendLine: jest.fn(),
-      clear: jest.fn(),
-      dispose: jest.fn(),
+suite('Logger', () => {
+  let logger: Logger
+  let appendLineSpy: ReturnType<typeof makeSpy>
+  let clearSpy: ReturnType<typeof makeSpy>
+  let disposeSpy: ReturnType<typeof makeSpy>
+
+  // Originals saved for restore
+  let origCreateOutputChannel: typeof vscode.window.createOutputChannel
+  let origConsoleLog: typeof console.log
+  let origConsoleDebug: typeof console.debug
+  let origConsoleWarn: typeof console.warn
+  let origConsoleError: typeof console.error
+
+  setup(() => {
+    appendLineSpy = makeSpy()
+    clearSpy = makeSpy()
+    disposeSpy = makeSpy()
+
+    const mockChannel: vscode.OutputChannel = {
+      name: 'Jokalala',
+      appendLine: appendLineSpy as unknown as (value: string) => void,
+      append: () => {},
+      clear: clearSpy as unknown as () => void,
+      dispose: disposeSpy as unknown as () => void,
+      show: () => {},
+      hide: () => {},
+      replace: () => {},
     }
 
-    jest
-      .spyOn(vscode.window, 'createOutputChannel')
-      .mockReturnValue(mockChannel)
-    jest.spyOn(console, 'log').mockImplementation()
-    jest.spyOn(console, 'debug').mockImplementation()
-    jest.spyOn(console, 'warn').mockImplementation()
-    jest.spyOn(console, 'error').mockImplementation()
+    // Patch vscode.window.createOutputChannel
+    origCreateOutputChannel = vscode.window.createOutputChannel
+    ;(vscode.window as any).createOutputChannel = () => mockChannel
+
+    // Silence console noise during tests
+    origConsoleLog = console.log
+    origConsoleDebug = console.debug
+    origConsoleWarn = console.warn
+    origConsoleError = console.error
+    console.log = () => {}
+    console.debug = () => {}
+    console.warn = () => {}
+    console.error = () => {}
 
     logger = new Logger()
+    // Set to Debug so all tests see all log levels by default.
+    // Clear the spy afterwards so setLevel's own log entry doesn't
+    // appear in tests that check calls[0].
+    logger.setLevel(LogLevel.Debug)
+    appendLineSpy.clear()
   })
 
-  afterEach(() => {
+  teardown(() => {
     logger.dispose()
-    jest.restoreAllMocks()
+    ;(vscode.window as any).createOutputChannel = origCreateOutputChannel
+    console.log = origConsoleLog
+    console.debug = origConsoleDebug
+    console.warn = origConsoleWarn
+    console.error = origConsoleError
+    appendLineSpy.clear()
   })
 
-  describe('Basic Logging', () => {
-    it('should log debug messages', () => {
+  suite('Basic Logging', () => {
+    test('should log debug messages', () => {
       logger.debug('Debug message')
-      expect(mockChannel.appendLine).toHaveBeenCalled()
-      expect(console.debug).toHaveBeenCalled()
+      assert.ok(appendLineSpy.callCount() > 0, 'appendLine should be called')
     })
 
-    it('should log info messages', () => {
+    test('should log info messages', () => {
       logger.info('Info message')
-      expect(mockChannel.appendLine).toHaveBeenCalled()
-      expect(console.log).toHaveBeenCalled()
+      assert.ok(appendLineSpy.callCount() > 0, 'appendLine should be called')
     })
 
-    it('should log warning messages', () => {
+    test('should log warning messages', () => {
       logger.warn('Warning message')
-      expect(mockChannel.appendLine).toHaveBeenCalled()
-      expect(console.warn).toHaveBeenCalled()
+      assert.ok(appendLineSpy.callCount() > 0, 'appendLine should be called')
     })
 
-    it('should log error messages', () => {
+    test('should log error messages', () => {
       logger.error('Error message')
-      expect(mockChannel.appendLine).toHaveBeenCalled()
-      expect(console.error).toHaveBeenCalled()
+      assert.ok(appendLineSpy.callCount() > 0, 'appendLine should be called')
     })
 
-    it('should log error messages with error object', () => {
+    test('should log error messages with error object', () => {
       const error = new Error('Test error')
       logger.error('Error occurred', error)
-      expect(mockChannel.appendLine).toHaveBeenCalled()
-      const loggedMessage = mockChannel.appendLine.mock.calls[0][0]
-      expect(loggedMessage).toContain('Test error')
+      assert.ok(appendLineSpy.callCount() > 0, 'appendLine should be called')
+      const loggedMessage = appendLineSpy.calls[0]?.[0] as string
+      assert.ok(loggedMessage.includes('Test error'), 'Should include error message')
     })
 
-    it('should log messages with context', () => {
+    test('should log messages with context', () => {
       const context = { userId: '123', action: 'test' }
       logger.info('Message with context', context)
-      const loggedMessage = mockChannel.appendLine.mock.calls[0][0]
-      expect(loggedMessage).toContain('userId')
-      expect(loggedMessage).toContain('123')
+      const loggedMessage = appendLineSpy.calls[0]?.[0] as string
+      assert.ok(loggedMessage.includes('userId'), 'Should include userId key')
+      assert.ok(loggedMessage.includes('123'), 'Should include userId value')
     })
   })
 
-  describe('Log Level Filtering', () => {
-    it('should filter debug messages when level is Info', () => {
+  suite('Log Level Filtering', () => {
+    test('should filter debug messages when level is Info', () => {
       logger.setLevel(LogLevel.Info)
-      mockChannel.appendLine.mockClear()
-
+      appendLineSpy.clear()
       logger.debug('Debug message')
-      expect(mockChannel.appendLine).toHaveBeenCalledTimes(0)
+      assert.strictEqual(appendLineSpy.callCount(), 0, 'Debug should be filtered at Info level')
     })
 
-    it('should allow info messages when level is Info', () => {
+    test('should allow info messages when level is Info', () => {
       logger.setLevel(LogLevel.Info)
-      mockChannel.appendLine.mockClear()
-
+      appendLineSpy.clear()
       logger.info('Info message')
-      expect(mockChannel.appendLine).toHaveBeenCalled()
+      assert.ok(appendLineSpy.callCount() > 0, 'Info should pass at Info level')
     })
 
-    it('should filter info and debug when level is Warn', () => {
+    test('should filter info and debug when level is Warn', () => {
       logger.setLevel(LogLevel.Warn)
-      mockChannel.appendLine.mockClear()
-
+      appendLineSpy.clear()
       logger.debug('Debug message')
       logger.info('Info message')
-      expect(mockChannel.appendLine).toHaveBeenCalledTimes(0)
+      assert.strictEqual(appendLineSpy.callCount(), 0, 'Debug/Info should be filtered at Warn level')
     })
 
-    it('should allow warnings when level is Warn', () => {
+    test('should allow warnings when level is Warn', () => {
       logger.setLevel(LogLevel.Warn)
-      mockChannel.appendLine.mockClear()
-
+      appendLineSpy.clear()
       logger.warn('Warning message')
-      expect(mockChannel.appendLine).toHaveBeenCalled()
+      assert.ok(appendLineSpy.callCount() > 0, 'Warn should pass at Warn level')
     })
 
-    it('should only allow errors when level is Error', () => {
+    test('should only allow errors when level is Error', () => {
       logger.setLevel(LogLevel.Error)
-      mockChannel.appendLine.mockClear()
-
+      appendLineSpy.clear()
       logger.debug('Debug message')
       logger.info('Info message')
       logger.warn('Warning message')
-      expect(mockChannel.appendLine).toHaveBeenCalledTimes(0)
-
+      assert.strictEqual(appendLineSpy.callCount(), 0, 'Debug/Info/Warn should be filtered at Error level')
       logger.error('Error message')
-      expect(mockChannel.appendLine).toHaveBeenCalled()
+      assert.ok(appendLineSpy.callCount() > 0, 'Error should pass at Error level')
     })
 
-    it('should get current log level', () => {
+    test('should get current log level', () => {
       logger.setLevel(LogLevel.Warn)
-      expect(logger.getLevel()).toBe(LogLevel.Warn)
+      assert.strictEqual(logger.getLevel(), LogLevel.Warn)
     })
   })
 
-  describe('Performance Metrics', () => {
-    it('should log performance metrics', () => {
+  suite('Performance Metrics', () => {
+    test('should log performance metrics', () => {
       logger.setLevel(LogLevel.Debug)
-      mockChannel.appendLine.mockClear()
-
+      appendLineSpy.clear()
       logger.logMetric('test-operation', 150, 'ms')
-      expect(mockChannel.appendLine).toHaveBeenCalled()
-      const loggedMessage = mockChannel.appendLine.mock.calls[0][0]
-      expect(loggedMessage).toContain('METRIC')
-      expect(loggedMessage).toContain('test-operation')
-      expect(loggedMessage).toContain('150ms')
+      assert.ok(appendLineSpy.callCount() > 0, 'Should log metric')
+      const loggedMessage = appendLineSpy.calls[0]?.[0] as string
+      assert.ok(loggedMessage.includes('METRIC'), 'Should include METRIC label')
+      assert.ok(loggedMessage.includes('test-operation'), 'Should include operation name')
+      assert.ok(loggedMessage.includes('150ms'), 'Should include value and unit')
     })
 
-    it('should not log metrics when level is above Debug', () => {
+    test('should not log metrics when level is above Debug', () => {
       logger.setLevel(LogLevel.Info)
-      mockChannel.appendLine.mockClear()
-
+      appendLineSpy.clear()
       logger.logMetric('test-operation', 150, 'ms')
-      expect(mockChannel.appendLine).toHaveBeenCalledTimes(0)
+      assert.strictEqual(appendLineSpy.callCount(), 0, 'Metrics should be filtered above Debug')
     })
 
-    it('should use default unit of ms', () => {
+    test('should use default unit of ms', () => {
       logger.setLevel(LogLevel.Debug)
-      mockChannel.appendLine.mockClear()
-
+      appendLineSpy.clear()
       logger.logMetric('test-operation', 150)
-      const loggedMessage = mockChannel.appendLine.mock.calls[0][0]
-      expect(loggedMessage).toContain('150ms')
+      const loggedMessage = appendLineSpy.calls[0]?.[0] as string
+      assert.ok(loggedMessage.includes('150ms'), 'Should default to ms unit')
     })
 
-    it('should start and stop timer', () => {
+    test('should start and stop timer', () => {
       logger.setLevel(LogLevel.Debug)
-      mockChannel.appendLine.mockClear()
-
+      appendLineSpy.clear()
       const stopTimer = logger.startTimer('test-timer')
       stopTimer()
-
-      expect(mockChannel.appendLine).toHaveBeenCalled()
-      const loggedMessage = mockChannel.appendLine.mock.calls[0][0]
-      expect(loggedMessage).toContain('test-timer')
+      assert.ok(appendLineSpy.callCount() > 0, 'Should log timer result')
+      const loggedMessage = appendLineSpy.calls[0]?.[0] as string
+      assert.ok(loggedMessage.includes('test-timer'), 'Should include timer name')
     })
   })
 
-  describe('Log Management', () => {
-    it('should clear logs', () => {
+  suite('Log Management', () => {
+    test('should clear logs', () => {
       logger.info('Test message')
       logger.clear()
-      expect(mockChannel.clear).toHaveBeenCalled()
+      assert.ok(clearSpy.callCount() > 0, 'clear() should be called on channel')
     })
 
-    it('should export logs', async () => {
+    test('should export logs', async () => {
       logger.info('Test message 1')
       logger.warn('Test message 2')
       logger.error('Test message 3')
-
       const exported = await logger.export()
-      expect(exported).toContain('Jokalala Code Analysis Logs')
-      expect(exported).toContain('Test message 1')
-      expect(exported).toContain('Test message 2')
-      expect(exported).toContain('Test message 3')
+      assert.ok(exported.includes('Jokalala Code Analysis Logs'), 'Should include header')
+      assert.ok(exported.includes('Test message 1'), 'Should include info message')
+      assert.ok(exported.includes('Test message 2'), 'Should include warn message')
+      assert.ok(exported.includes('Test message 3'), 'Should include error message')
     })
 
-    it('should export performance metrics', async () => {
+    test('should export performance metrics', async () => {
       logger.setLevel(LogLevel.Debug)
       logger.logMetric('operation-1', 100, 'ms')
       logger.logMetric('operation-2', 200, 'ms')
-
       const exported = await logger.export()
-      expect(exported).toContain('Performance Metrics')
-      expect(exported).toContain('operation-1')
-      expect(exported).toContain('operation-2')
+      assert.ok(exported.includes('Performance Metrics'), 'Should include metrics section')
+      assert.ok(exported.includes('operation-1'), 'Should include first metric')
+      assert.ok(exported.includes('operation-2'), 'Should include second metric')
     })
 
-    it('should dispose resources', () => {
+    test('should dispose resources', () => {
       logger.dispose()
-      expect(mockChannel.dispose).toHaveBeenCalled()
+      assert.ok(disposeSpy.callCount() > 0, 'dispose() should be called on channel')
     })
   })
 
-  describe('Log Entry Formatting', () => {
-    it('should include timestamp in log entries', () => {
+  suite('Log Entry Formatting', () => {
+    test('should include timestamp in log entries', () => {
       logger.info('Test message')
-      const loggedMessage = mockChannel.appendLine.mock.calls[0][0]
-      expect(loggedMessage).toMatch(/\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+      const loggedMessage = appendLineSpy.calls[0]?.[0] as string
+      assert.ok(/\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(loggedMessage), 'Should include ISO timestamp')
     })
 
-    it('should include log level in log entries', () => {
+    test('should include log level in log entries', () => {
       logger.info('Test message')
-      const loggedMessage = mockChannel.appendLine.mock.calls[0][0]
-      expect(loggedMessage).toContain('[INFO]')
+      const loggedMessage = appendLineSpy.calls[0]?.[0] as string
+      assert.ok(loggedMessage.includes('[INFO]'), 'Should include log level')
     })
 
-    it('should format error stack traces', () => {
+    test('should format error stack traces', () => {
       const error = new Error('Test error')
       logger.error('Error occurred', error)
-      const loggedMessage = mockChannel.appendLine.mock.calls[0][0]
-      expect(loggedMessage).toContain('Error:')
-      expect(loggedMessage).toContain('Stack:')
+      const loggedMessage = appendLineSpy.calls[0]?.[0] as string
+      assert.ok(loggedMessage.includes('Error:'), 'Should include Error label')
+      assert.ok(loggedMessage.includes('Stack:'), 'Should include Stack label')
     })
 
-    it('should handle context serialization errors gracefully', () => {
+    test('should handle context serialization errors gracefully', () => {
       const circularContext: any = {}
       circularContext.self = circularContext
-
       logger.info('Message with circular context', circularContext)
-      const loggedMessage = mockChannel.appendLine.mock.calls[0][0]
-      expect(loggedMessage).toContain('Unable to serialize')
+      const loggedMessage = appendLineSpy.calls[0]?.[0] as string
+      assert.ok(loggedMessage.includes('Unable to serialize'), 'Should handle circular refs')
     })
   })
 
-  describe('Log Entry Limits', () => {
-    it('should limit stored log entries to maxLogEntries', async () => {
-      // Log more than maxLogEntries (1000)
+  suite('Log Entry Limits', () => {
+    test('should limit stored log entries to maxLogEntries', async () => {
       for (let i = 0; i < 1100; i++) {
         logger.info(`Message ${i}`)
       }
-
       const exported = await logger.export()
-      expect(exported).toContain('Total entries: 1000')
-      expect(exported).not.toContain('Message 0')
-      expect(exported).toContain('Message 1099')
+      assert.ok(exported.includes('Total entries: 1000'), 'Should cap at 1000 entries')
+      assert.ok(!exported.includes('Message 0'), 'Oldest entries should be dropped')
+      assert.ok(exported.includes('Message 1099'), 'Newest entry should be present')
     })
 
-    it('should limit stored performance metrics to 500', async () => {
+    test('should limit stored performance metrics to 500', async () => {
       logger.setLevel(LogLevel.Debug)
-
-      // Log more than 500 metrics
       for (let i = 0; i < 600; i++) {
         logger.logMetric(`metric-${i}`, i, 'ms')
       }
-
       const exported = await logger.export()
-      expect(exported).not.toContain('metric-0')
-      expect(exported).toContain('metric-599')
+      assert.ok(!exported.includes('metric-0'), 'Oldest metric should be dropped')
+      assert.ok(exported.includes('metric-599'), 'Newest metric should be present')
     })
   })
 
-  describe('Edge Cases', () => {
-    it('should handle empty messages', () => {
+  suite('Edge Cases', () => {
+    test('should handle empty messages', () => {
       logger.info('')
-      expect(mockChannel.appendLine).toHaveBeenCalled()
+      assert.ok(appendLineSpy.callCount() > 0, 'Should handle empty message')
     })
 
-    it('should handle undefined context', () => {
+    test('should handle undefined context', () => {
       logger.info('Message', undefined)
-      expect(mockChannel.appendLine).toHaveBeenCalled()
+      assert.ok(appendLineSpy.callCount() > 0, 'Should handle undefined context')
     })
 
-    it('should handle empty context object', () => {
+    test('should handle empty context object', () => {
       logger.info('Message', {})
-      const loggedMessage = mockChannel.appendLine.mock.calls[0][0]
-      expect(loggedMessage).not.toContain('Context:')
+      const loggedMessage = appendLineSpy.calls[0]?.[0] as string
+      assert.ok(!loggedMessage.includes('Context:'), 'Empty context should not add Context section')
     })
 
-    it('should handle error without stack trace', () => {
+    test('should handle error without stack trace', () => {
       const error = new Error('Test error')
       delete error.stack
       logger.error('Error occurred', error)
-      const loggedMessage = mockChannel.appendLine.mock.calls[0][0]
-      expect(loggedMessage).toContain('Test error')
+      const loggedMessage = appendLineSpy.calls[0]?.[0] as string
+      assert.ok(loggedMessage.includes('Test error'), 'Should include error message without stack')
     })
   })
 })

@@ -47,6 +47,16 @@ export {
   type OfflineAnalysisResult,
 } from './offline-analyzer'
 
+// Extended Offline Rules (50+ additional security rules)
+export {
+  EXTENDED_SECURITY_RULES,
+  getAllSecurityRules,
+  getRulesByCategory,
+  getRulesByOWASP,
+  getRulesByCWE,
+  getRulesByLanguage,
+} from './offline-rules-extended'
+
 // Advanced Caching System
 export {
   CacheManager,

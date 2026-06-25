@@ -61,7 +61,7 @@ const PATTERNS: SecretPattern[] = [
   // Database connection strings
   {
     name: 'Database Connection String',
-    regex: /(?:postgres|mysql|mongodb|redis):\/\/[^:]+:[^@]+@/i,
+    regex: /(?:postgresql?|mysql|mongodb|redis):\/\/[^:]+:[^@]+@/i,
     severity: 'critical',
   },
   // Generic password assignments
