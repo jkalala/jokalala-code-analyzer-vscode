@@ -30,6 +30,7 @@ import {
   getCustomRuleEngine,
 } from '../core/custom-rules'
 import { PluginSecurityError } from '../utils/typed-errors'
+import { activatePluginSandboxed } from './plugin-sandbox'
 
 /**
  * Plugin types supported by the system
@@ -370,14 +371,26 @@ export class PluginManager extends EventEmitter {
       this.plugins.set(manifest.id, loadedPlugin)
       loadedPlugin.status = PluginStatus.ENABLED
 
-      // Activate plugin if it has an activate function
+      // Activate plugin through the sandbox (enforces timeout + restricted context)
       if (loadedPlugin.instance?.activate && this.context) {
-        try {
-          await loadedPlugin.instance.activate(this.createPluginContext(pluginPath))
-        } catch (e) {
+        const sandboxResult = await activatePluginSandboxed(
+          loadedPlugin,
+          this.context,
+          this.ruleEngine
+        )
+
+        // Forward plugin log messages to our output channel
+        for (const msg of sandboxResult.logMessages) {
+          this.log(msg)
+        }
+
+        if (!sandboxResult.success) {
           loadedPlugin.status = PluginStatus.ERROR
-          loadedPlugin.error = (e as Error).message
-          this.logError(`Failed to activate plugin: ${manifest.id}`, e as Error)
+          loadedPlugin.error = sandboxResult.error
+          this.logError(
+            `Plugin activation failed: ${manifest.id} (${sandboxResult.durationMs}ms)`,
+            new Error(sandboxResult.error ?? 'Unknown error')
+          )
         }
       }
 
