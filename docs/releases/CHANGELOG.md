@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-06-25
+
+### Security — Critical fixes
+
+- **HTTPS enforcement**: All outbound API calls now validate the endpoint URL
+  before transmitting any data. HTTP endpoints (except `localhost`) are blocked
+  with a clear error message and HTTPS suggestion. Centralized in the new
+  `url-validator` utility (`validateApiUrl`, `safeJoinUrl`, `assertHttpsUrl`).
+
+- **Plugin path-traversal protection**: `manifest.main` is now resolved with
+  `path.resolve()` and verified to remain inside the plugin directory before
+  `require()` is called. A malicious manifest could previously escape the
+  plugin directory entirely.
+
+- **Plugin integrity verification**: SHA-256 hash over all plugin files is
+  recorded as a trusted baseline on first load. Subsequent loads are blocked
+  if any file has changed, detecting supply-chain tampering.
+
+- **Plugin sandbox**: Plugin `activate()` runs inside a restricted
+  `PluginContext` — `globalState`/`workspaceState` are read-only proxies,
+  `SecretStorage` is not exposed, and a **5-second hard timeout** prevents
+  plugins from hanging the extension.
+
+- **JWT format validation on auth callback**: The deep-link token is checked
+  for proper 3-part Base64url JWT structure before being stored in
+  `SecretStorage`. UserID is validated against an allowlist regex.
+
+- **Feedback URL validation**: `feedbackApiUrl` is validated before any
+  feedback data is transmitted (was previously sent to arbitrary HTTP URLs).
+
+- **URL concatenation fix in `submit-feedback`**: Replaced `${endpoint}/path`
+  template literal with `safeJoinUrl()` to prevent path injection. Absolute
+  file paths stripped from feedback `location.file` — only `basename` is sent.
+
+### New features
+
+- **Audit trail** (`AuditService`): Immutable append-only compliance log
+  stored at `globalStorageUri/audit.jsonl`. Tamper-evident SHA-256 chain
+  hashing. Covers auth, analysis, plugin, config, and security events.
+  User IDs hashed (SHA-256), details sanitised (no code snippets or tokens).
+  Export as JSONL for Splunk/Elastic/Datadog via **"Jokalala: Export Audit Log"**.
+
+- **Secrets pre-screening**: 12 regex patterns (private keys, AWS, GitHub/GitLab
+  tokens, JWTs, DB connection strings, Stripe, etc.) scan code *before* it is
+  sent to the API. A modal consent dialog is shown if secrets are found;
+  analysis is blocked unless the user explicitly clicks "Send Anyway".
+
+- **Typed error hierarchy**: `AppError` → `NetworkError`, `ValidationError`,
+  `AuthError`, `PluginSecurityError`, `SecurityError`, `CancellationError`.
+  Eliminates `catch (error: any)` throughout the codebase for predictable
+  error handling and correct audit categorisation.
+
+### Changes
+
+- **Default `apiEndpoint`**: Changed from `http://localhost:3000/...` to
+  `https://jokalala.com/api/agents/dev-assistant`. New installs no longer
+  point to a dev server.
+
+- **Telemetry opt-in** (`enableTelemetry`): Default changed from `true` to
+  `false`. Users must explicitly enable telemetry. Required for enterprise
+  and regulated environment deployments.
+
+- **Debug log purge**: Removed all `[DEBUG]` log statements in
+  `code-analysis-service.ts` that were exposing full request URLs, Axios
+  config objects, and error details in production output channels.
+
+### Testing
+
+- 4 new test suites covering all security utilities: `url-validator` (25),
+  `typed-errors` (30), `secrets-prescreener` (24), `audit-service` (26),
+  `plugin-sandbox` (16) — **121 new test cases**.
+
 ## [2.3.0] - 2025-12-13
 
 ### Added
