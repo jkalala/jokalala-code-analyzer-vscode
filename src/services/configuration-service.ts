@@ -84,8 +84,8 @@ const CONFIGURATION_SCHEMA: ConfigurationSchema = {
   },
   enableTelemetry: {
     type: 'boolean',
-    default: true,
-    description: 'Enable anonymous telemetry collection',
+    default: false,
+    description: 'Enable anonymous telemetry collection (opt-in)',
     required: true,
   },
   cacheEnabled: {

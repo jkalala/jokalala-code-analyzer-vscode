@@ -14,10 +14,21 @@
  */
 
 import * as vscode from 'vscode'
+import { AuditEvent } from './audit-service'
 
 const TOKEN_KEY = 'jokalala.auth.token'
 const USER_ID_KEY = 'jokalala.auth.userId'
 const WEB_APP_BASE = 'https://jokalala.com'
+
+function tryGetAudit() {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getAuditService } = require('./audit-service') as typeof import('./audit-service')
+    return getAuditService()
+  } catch {
+    return null
+  }
+}
 
 export interface AuthState {
   isAuthenticated: boolean
@@ -59,6 +70,7 @@ export class AuthService {
 
   /** Opens the browser sign-in flow */
   async signIn(): Promise<void> {
+    tryGetAudit()?.record(AuditEvent.AUTH_SIGN_IN_INITIATED)
     const uri = vscode.Uri.parse(`${WEB_APP_BASE}/vscode-auth`)
     await vscode.env.openExternal(uri)
     vscode.window.showInformationMessage(
@@ -92,6 +104,7 @@ export class AuthService {
 
     // Reject tokens that don't look like JWTs to prevent storing injected values
     if (!this.isJwtShaped(token)) {
+      tryGetAudit()?.record(AuditEvent.AUTH_TOKEN_INVALID_FORMAT)
       vscode.window.showErrorMessage(
         'Authentication failed: received token has an unexpected format. Please try signing in again.'
       )
@@ -116,6 +129,8 @@ export class AuthService {
     this._authState = { isAuthenticated: true, token, userId: safeUserId }
     this._onDidChangeAuth.fire(this._authState)
 
+    tryGetAudit()?.record(AuditEvent.AUTH_SIGN_IN_SUCCESS, {}, safeUserId ?? undefined)
+
     vscode.window.showInformationMessage(
       '✅ Signed in to Jokalala! Your Pro quota is now active in the extension.'
     )
@@ -123,6 +138,7 @@ export class AuthService {
 
   /** Sign out — clear stored credentials */
   async signOut(): Promise<void> {
+    tryGetAudit()?.record(AuditEvent.AUTH_SIGN_OUT, {}, this._authState.userId ?? undefined)
     await this.context.secrets.delete(TOKEN_KEY)
     await this.context.secrets.delete(USER_ID_KEY)
     this._authState = { isAuthenticated: false, token: null, userId: null }

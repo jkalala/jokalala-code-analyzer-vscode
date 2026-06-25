@@ -15,6 +15,7 @@
  * @module services/plugin-manager
  */
 
+import * as crypto from 'crypto'
 import * as vscode from 'vscode'
 import * as path from 'path'
 import * as fs from 'fs'
@@ -28,6 +29,7 @@ import {
   PatternType,
   getCustomRuleEngine,
 } from '../core/custom-rules'
+import { PluginSecurityError } from '../utils/typed-errors'
 
 /**
  * Plugin types supported by the system
@@ -300,6 +302,17 @@ export class PluginManager extends EventEmitter {
         throw new Error(`Maximum plugin limit (${this.config.maxPlugins}) reached`)
       }
 
+      // ── Integrity verification ───────────────────────────────────────────
+      // Block plugins whose files have changed since the trusted baseline.
+      // This detects supply-chain tampering (e.g. a plugin directory being
+      // replaced by a malicious version after initial installation).
+      if (!this.verifyPluginIntegrity(manifest.id, pluginPath)) {
+        throw new PluginSecurityError(
+          manifest.id,
+          'files changed since trusted baseline was recorded — reload VS Code after manually reviewing the plugin'
+        )
+      }
+
       // Create loaded plugin entry
       const loadedPlugin: LoadedPlugin = {
         manifest,
@@ -377,6 +390,80 @@ export class PluginManager extends EventEmitter {
       return null
     }
   }
+
+  // ── Integrity verification ───────────────────────────────────────────────
+
+  /**
+   * Compute a SHA-256 hash over all files in a plugin directory.
+   * The hash is stable for a given set of file contents regardless of
+   * file system timestamps.
+   */
+  private computePluginHash(pluginPath: string): string {
+    const hasher = crypto.createHash('sha256')
+
+    const collectFiles = (dir: string): string[] => {
+      const result: string[] = []
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) {
+          result.push(...collectFiles(full))
+        } else {
+          result.push(full)
+        }
+      }
+      return result.sort() // deterministic order
+    }
+
+    for (const file of collectFiles(pluginPath)) {
+      // Hash relative path + content so renames are also detected
+      const rel = path.relative(pluginPath, file)
+      hasher.update(`PATH:${rel}`)
+      hasher.update(fs.readFileSync(file))
+    }
+
+    return hasher.digest('hex')
+  }
+
+  /**
+   * Verify plugin integrity against the stored baseline.
+   *
+   * On first load the hash is stored as the trusted baseline.
+   * On subsequent loads, if the hash differs, the plugin is blocked
+   * and an audit event is emitted.
+   *
+   * @returns `true` if the plugin passes the integrity check.
+   */
+  private verifyPluginIntegrity(pluginId: string, pluginPath: string): boolean {
+    const storageKey = `jokalala.plugins.integrity.${pluginId}`
+    const currentHash = this.computePluginHash(pluginPath)
+
+    if (!this.context) return true // Can't verify without context — allow
+
+    const storedHash = this.context.globalState.get<string>(storageKey)
+
+    if (!storedHash) {
+      // First time seeing this plugin — record the baseline hash
+      this.context.globalState.update(storageKey, currentHash)
+      this.log(`Plugin "${pluginId}" — integrity baseline recorded`)
+      return true
+    }
+
+    if (storedHash !== currentHash) {
+      this.logError(
+        `Plugin "${pluginId}" integrity check FAILED — files have changed since last load`,
+        new PluginSecurityError(pluginId, 'plugin files changed since baseline was recorded')
+      )
+      this.emit('plugin-error', {
+        pluginId,
+        error: new PluginSecurityError(pluginId, 'integrity check failed'),
+      })
+      return false
+    }
+
+    return true
+  }
+
+  // ── End integrity section ────────────────────────────────────────────────
 
   /**
    * Load a single rule file
