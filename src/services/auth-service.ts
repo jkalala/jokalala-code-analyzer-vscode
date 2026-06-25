@@ -66,6 +66,19 @@ export class AuthService {
     )
   }
 
+  /**
+   * Basic structural check: a JWT has exactly three dot-separated Base64url segments.
+   * This does NOT verify the signature — that is done by the server — but it prevents
+   * storing garbage or injected values in SecretStorage.
+   */
+  private isJwtShaped(token: string): boolean {
+    const parts = token.split('.')
+    if (parts.length !== 3) return false
+    // Each part must be non-empty and Base64url-safe characters only
+    const base64url = /^[A-Za-z0-9_-]+$/
+    return parts.every(p => p.length > 0 && base64url.test(p))
+  }
+
   /** Called by the URI handler when VS Code receives the deep-link callback */
   async handleAuthCallback(uri: vscode.Uri): Promise<void> {
     const params = new URLSearchParams(uri.query)
@@ -77,12 +90,30 @@ export class AuthService {
       return
     }
 
-    await this.context.secrets.store(TOKEN_KEY, token)
-    if (userId) {
-      await this.context.secrets.store(USER_ID_KEY, userId)
+    // Reject tokens that don't look like JWTs to prevent storing injected values
+    if (!this.isJwtShaped(token)) {
+      vscode.window.showErrorMessage(
+        'Authentication failed: received token has an unexpected format. Please try signing in again.'
+      )
+      return
     }
 
-    this._authState = { isAuthenticated: true, token, userId: userId ?? null }
+    // Validate userId is alphanumeric if present (prevents injection via URI)
+    const safeUserId =
+      userId && /^[a-zA-Z0-9_-]{1,128}$/.test(userId) ? userId : null
+    if (userId && !safeUserId) {
+      vscode.window.showErrorMessage(
+        'Authentication failed: userId has an unexpected format.'
+      )
+      return
+    }
+
+    await this.context.secrets.store(TOKEN_KEY, token)
+    if (safeUserId) {
+      await this.context.secrets.store(USER_ID_KEY, safeUserId)
+    }
+
+    this._authState = { isAuthenticated: true, token, userId: safeUserId }
     this._onDidChangeAuth.fire(this._authState)
 
     vscode.window.showInformationMessage(

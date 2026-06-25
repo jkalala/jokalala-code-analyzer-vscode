@@ -15,7 +15,7 @@ export type AnalysisMode = 'quick' | 'deep' | 'full'
 const CONFIGURATION_SCHEMA: ConfigurationSchema = {
   apiEndpoint: {
     type: 'string',
-    default: 'http://localhost:3000/api/agents/dev-assistant',
+    default: 'https://jokalala.com/api/agents/dev-assistant',
     description: 'API endpoint for code analysis service',
     required: true,
   },
@@ -272,16 +272,43 @@ export class ConfigurationService implements IConfigurationService {
         }
       }
 
-      // URL validation for apiEndpoint
+      // URL validation for apiEndpoint — enforce HTTPS for non-localhost
       if (key === 'apiEndpoint' && typeof value === 'string') {
         try {
           const url = new URL(value)
-          if (url.protocol !== 'https:') {
+          const isLocalhost =
+            url.hostname === 'localhost' ||
+            url.hostname === '127.0.0.1' ||
+            url.hostname === '::1'
+
+          if (url.protocol !== 'https:' && !isLocalhost) {
+            // Non-localhost must use HTTPS — this is an error, not a warning,
+            // because sending code snippets over plain HTTP leaks data.
+            errors.push({
+              setting: key,
+              message:
+                'API endpoint must use HTTPS. Plain HTTP endpoints may expose code ' +
+                'and analysis results to network interception. ' +
+                `Suggested: ${value.replace('http:', 'https:')}`,
+              currentValue: value,
+              expectedType: 'string',
+            })
+          } else if (url.protocol !== 'https:' && isLocalhost) {
             warnings.push({
               setting: key,
-              message: 'API endpoint should use HTTPS for security',
+              message: 'Using HTTP for local development endpoint. Switch to HTTPS for production.',
               currentValue: value,
               suggestedValue: value.replace('http:', 'https:'),
+            })
+          }
+
+          // Block credentials in URL
+          if (url.username || url.password) {
+            errors.push({
+              setting: key,
+              message: 'API endpoint must not contain embedded credentials (user:password@host)',
+              currentValue: '[REDACTED]',
+              expectedType: 'string',
             })
           }
         } catch (error) {

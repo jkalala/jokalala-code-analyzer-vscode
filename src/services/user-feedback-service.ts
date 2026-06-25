@@ -11,6 +11,7 @@
 
 import * as vscode from 'vscode'
 import * as crypto from 'crypto'
+import { validateApiUrl } from '../utils/url-validator'
 
 /**
  * User action types for feedback
@@ -430,13 +431,22 @@ export class UserFeedbackService {
       // For now, store locally. In production, send to backend API
       await this.storeLocally(feedbackToSend)
 
-      // Optionally send to backend if configured
+      // Optionally send to backend if configured — HTTPS required to prevent
+      // code snippets and metrics from leaking over unencrypted connections.
       const apiUrl = vscode.workspace
         .getConfiguration('jokalala')
         .get<string>('feedbackApiUrl')
 
       if (apiUrl && this.telemetryEnabled) {
-        await this.sendToBackend(apiUrl, feedbackToSend)
+        const urlCheck = validateApiUrl(apiUrl)
+        if (urlCheck.valid) {
+          await this.sendToBackend(apiUrl, feedbackToSend)
+        } else {
+          console.warn(
+            `[UserFeedback] Skipping backend send: feedbackApiUrl is invalid — ${urlCheck.reason}` +
+            (urlCheck.suggestion ? ` Suggestion: ${urlCheck.suggestion}` : '')
+          )
+        }
       }
 
       console.log(`[UserFeedback] Flushed ${feedbackToSend.length} feedback entries`)

@@ -1,5 +1,7 @@
 import * as vscode from 'vscode'
+import * as path from 'path'
 import axios from 'axios'
+import { assertHttpsUrl, safeJoinUrl } from '../utils/url-validator'
 
 export interface FeedbackOptions {
   language: string
@@ -105,9 +107,26 @@ export async function registerFeedbackCommand(context: vscode.ExtensionContext) 
           return
         }
 
+        // Validate endpoint uses HTTPS before sending any data
+        assertHttpsUrl(apiEndpoint, 'jokalala.apiEndpoint')
+
+        // Build URL safely — prevents path-traversal via injected segments
+        const feedbackUrl = safeJoinUrl(apiEndpoint, 'analysis-feedback')
+
+        // Strip absolute file paths from location before sending —
+        // the filename can contain private directory structures.
+        const safeLocation = options.location
+          ? {
+              file: options.location.file
+                ? path.basename(options.location.file)
+                : undefined,
+              line: options.location.line,
+            }
+          : undefined
+
         // Submit feedback
         const response = await axios.post(
-          `${apiEndpoint}/analysis-feedback`,
+          feedbackUrl,
           {
             sessionId: context.globalState.get('sessionId') || 'vscode-session',
             userId: context.globalState.get('userId'),
@@ -121,7 +140,7 @@ export async function registerFeedbackCommand(context: vscode.ExtensionContext) 
             userComment,
             issueDescription: options.issueDescription,
             codeSnippet: options.codeSnippet,
-            location: options.location,
+            location: safeLocation,
             analysisMode: options.analysisMode,
           },
           {

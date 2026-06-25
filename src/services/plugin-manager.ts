@@ -328,13 +328,25 @@ export class PluginManager extends EventEmitter {
         }
       }
 
-      // Load main module if specified
+      // Load main module if specified — guard against path-traversal attacks
+      // (e.g. manifest.main = "../../node_modules/evil").
       if (manifest.main) {
-        const mainPath = path.join(pluginPath, manifest.main)
-        if (fs.existsSync(mainPath)) {
+        const resolvedMain = path.resolve(pluginPath, manifest.main)
+        const resolvedBase = path.resolve(pluginPath)
+
+        // Reject any path that escapes the plugin directory
+        if (!resolvedMain.startsWith(resolvedBase + path.sep) && resolvedMain !== resolvedBase) {
+          this.logError(
+            `Plugin ${manifest.id} rejected: manifest.main escapes plugin directory`,
+            new Error(`Path traversal: "${manifest.main}" resolves to "${resolvedMain}"`)
+          )
+          loadedPlugin.status = PluginStatus.ERROR
+          loadedPlugin.error = 'Plugin manifest.main path is outside the plugin directory'
+        } else if (fs.existsSync(resolvedMain)) {
           try {
-            // Dynamic import for plugin modules
-            loadedPlugin.instance = require(mainPath)
+            // Dynamic require is unavoidable for a plugin system — path is
+            // now verified to be within the plugin's own directory.
+            loadedPlugin.instance = require(resolvedMain)
           } catch (e) {
             this.logError(`Failed to load plugin module: ${manifest.id}`, e as Error)
           }
