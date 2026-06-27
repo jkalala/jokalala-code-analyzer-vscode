@@ -46,6 +46,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.userFeedbackService = exports.UserFeedbackService = void 0;
 const vscode = __importStar(require("vscode"));
 const crypto = __importStar(require("crypto"));
+const url_validator_1 = require("../utils/url-validator");
 /**
  * User Feedback Service class
  */
@@ -358,12 +359,20 @@ class UserFeedbackService {
         try {
             // For now, store locally. In production, send to backend API
             await this.storeLocally(feedbackToSend);
-            // Optionally send to backend if configured
+            // Optionally send to backend if configured — HTTPS required to prevent
+            // code snippets and metrics from leaking over unencrypted connections.
             const apiUrl = vscode.workspace
                 .getConfiguration('jokalala')
                 .get('feedbackApiUrl');
             if (apiUrl && this.telemetryEnabled) {
-                await this.sendToBackend(apiUrl, feedbackToSend);
+                const urlCheck = (0, url_validator_1.validateApiUrl)(apiUrl);
+                if (urlCheck.valid) {
+                    await this.sendToBackend(apiUrl, feedbackToSend);
+                }
+                else {
+                    console.warn(`[UserFeedback] Skipping backend send: feedbackApiUrl is invalid — ${urlCheck.reason}` +
+                        (urlCheck.suggestion ? ` Suggestion: ${urlCheck.suggestion}` : ''));
+                }
             }
             console.log(`[UserFeedback] Flushed ${feedbackToSend.length} feedback entries`);
         }

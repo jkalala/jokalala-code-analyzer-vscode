@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.DiagnosticsManager = void 0;
 const vscode = __importStar(require("vscode"));
 const debounce_1 = require("../utils/debounce");
+const deduplication_service_1 = require("./deduplication-service");
 /**
  * Manages VS Code diagnostics for code analysis issues
  * Features:
@@ -84,9 +85,9 @@ class DiagnosticsManager {
      * Multiple calls within the debounce window will be batched
      */
     updateDiagnostics(uri, issues) {
-        // Add to pending updates
-        this.pendingUpdates.set(uri.toString(), issues);
-        // Trigger debounced flush
+        // Deduplicate before queuing — stores as Issue[] via cast (source is widened at runtime)
+        const deduped = deduplication_service_1.DeduplicationService.deduplicate(issues);
+        this.pendingUpdates.set(uri.toString(), deduped);
         this.debouncedFlush();
     }
     /**
@@ -94,7 +95,8 @@ class DiagnosticsManager {
      * Use for critical updates that need immediate feedback
      */
     updateDiagnosticsImmediate(uri, issues) {
-        const diagnostics = this.createDiagnostics(uri, issues);
+        const deduped = deduplication_service_1.DeduplicationService.deduplicate(issues);
+        const diagnostics = this.createDiagnostics(uri, deduped);
         this.diagnosticCollection.set(uri, diagnostics);
     }
     /**
@@ -116,6 +118,7 @@ class DiagnosticsManager {
     }
     /**
      * Create VS Code diagnostics from issues
+     * issues may contain DeduplicatedIssue entries (source === 'both') at runtime
      */
     createDiagnostics(uri, issues) {
         return issues
@@ -125,7 +128,22 @@ class DiagnosticsManager {
             this.storeIssueMetadata(issue);
             // Normalize location data
             const range = this.normalizeLocation(issue);
-            const diagnostic = new vscode.Diagnostic(range, issue.message || 'Unknown issue', this.mapSeverity(issue.severity));
+            // Prefix message with source badge so users can see AI vs. static origin
+            const src = issue.source;
+            const sourceLabel = src === 'both' ? '[AI+Rule]' : src === 'llm' ? '[AI]' : '[Rule]';
+            // Confidence suffix — only shown for medium/low confidence so high-confidence
+            // findings stay clean
+            const confidence = issue.priorityScore;
+            let confidenceSuffix = '';
+            if (confidence !== undefined) {
+                const pct = Math.round(confidence * 100);
+                if (pct < 50)
+                    confidenceSuffix = ' (possible issue — low confidence)';
+                else if (pct < 80)
+                    confidenceSuffix = ' (review recommended)';
+            }
+            const labelledMessage = `${sourceLabel} ${issue.message || 'Unknown issue'}${confidenceSuffix}`;
+            const diagnostic = new vscode.Diagnostic(range, labelledMessage, this.mapSeverity(issue.severity));
             diagnostic.source = 'Jokalala Code Analysis';
             diagnostic.code = issue.category;
             if (issue.suggestion) {

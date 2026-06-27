@@ -48,6 +48,7 @@ const sca_tree_provider_1 = require("./providers/sca-tree-provider");
 const container_iac_tree_provider_1 = require("./providers/container-iac-tree-provider");
 const plugins_tree_provider_1 = require("./providers/plugins-tree-provider");
 const enhanced_code_action_provider_1 = require("./providers/enhanced-code-action-provider");
+const auth_service_1 = require("./services/auth-service");
 const code_analysis_service_1 = require("./services/code-analysis-service");
 const configuration_service_1 = require("./services/configuration-service");
 const diagnostics_manager_1 = require("./services/diagnostics-manager");
@@ -60,6 +61,7 @@ const user_feedback_service_1 = require("./services/user-feedback-service");
 const quality_gate_1 = require("./utils/quality-gate");
 const false_positive_detector_1 = require("./utils/false-positive-detector");
 const intelligence_prioritizer_1 = require("./utils/intelligence-prioritizer");
+let authService;
 let diagnosticsManager;
 let codeAnalysisService;
 let configurationService;
@@ -81,6 +83,20 @@ async function activate(context) {
     logger = new logger_1.Logger();
     logger.info('Activating Jokalala Code Analysis extension');
     try {
+        // Auth — initialize first so token is available for all API calls
+        authService = new auth_service_1.AuthService(context);
+        await authService.initialize();
+        // Register URI handler for VS Code deep-link callback
+        // vscode://jokalala.code-analyzer/auth?token=<jwt>
+        context.subscriptions.push(vscode.window.registerUriHandler({
+            handleUri(uri) {
+                if (uri.path === '/auth') {
+                    authService.handleAuthCallback(uri);
+                }
+            },
+        }));
+        // Register sign-in / sign-out commands
+        context.subscriptions.push(vscode.commands.registerCommand('jokalala.signIn', () => authService.signIn()), vscode.commands.registerCommand('jokalala.signOut', () => authService.signOut()));
         configurationService = new configuration_service_1.ConfigurationService();
         diagnosticsManager = new diagnostics_manager_1.DiagnosticsManager();
         codeAnalysisService = new code_analysis_service_1.CodeAnalysisService(configurationService, logger);

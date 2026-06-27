@@ -42,7 +42,8 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MetricType = exports.timed = exports.getPerformanceMonitor = exports.createPerformanceMonitor = exports.PerformanceMonitor = exports.ReportFormat = exports.getReportGenerator = exports.createReportGenerator = exports.ReportGenerator = exports.ConditionOperator = exports.PatternType = exports.RuleCategory = exports.RuleSeverity = exports.createRulePackFromJSON = exports.createRuleFromJSON = exports.getCustomRuleEngine = exports.createCustomRuleEngine = exports.CustomRuleEngine = exports.SecretType = exports.SecretSeverity = exports.getSecretsDetector = exports.createSecretsDetector = exports.SecretsDetector = exports.AnalysisPhase = exports.StreamEventType = exports.VSCodeStreamAdapter = exports.createStreamingAnalyzer = exports.StreamingAnalyzer = exports.CacheTier = exports.CachePriority = exports.getAnalysisCacheManager = exports.getCacheManager = exports.AnalysisCacheManager = exports.CacheManager = exports.Severity = exports.getOfflineAnalyzer = exports.OfflineAnalyzer = exports.getIncrementalAnalyzer = exports.IncrementalAnalyzer = exports.TaskType = exports.TaskStatus = exports.TaskPriority = exports.shutdownGlobalWorkerPool = exports.initializeGlobalWorkerPool = exports.getGlobalWorkerPool = exports.WorkerPool = void 0;
+exports.getPerformanceMonitor = exports.createPerformanceMonitor = exports.PerformanceMonitor = exports.ReportFormat = exports.getReportGenerator = exports.createReportGenerator = exports.ReportGenerator = exports.ConditionOperator = exports.PatternType = exports.RuleCategory = exports.RuleSeverity = exports.createRulePackFromJSON = exports.createRuleFromJSON = exports.getCustomRuleEngine = exports.createCustomRuleEngine = exports.CustomRuleEngine = exports.SecretType = exports.SecretSeverity = exports.getSecretsDetector = exports.createSecretsDetector = exports.SecretsDetector = exports.AnalysisPhase = exports.StreamEventType = exports.VSCodeStreamAdapter = exports.createStreamingAnalyzer = exports.StreamingAnalyzer = exports.CacheTier = exports.CachePriority = exports.getAnalysisCacheManager = exports.getCacheManager = exports.AnalysisCacheManager = exports.CacheManager = exports.getRulesByLanguage = exports.getRulesByCWE = exports.getRulesByOWASP = exports.getRulesByCategory = exports.getAllSecurityRules = exports.EXTENDED_SECURITY_RULES = exports.Severity = exports.getOfflineAnalyzer = exports.OfflineAnalyzer = exports.getIncrementalAnalyzer = exports.IncrementalAnalyzer = exports.TaskType = exports.TaskStatus = exports.TaskPriority = exports.shutdownGlobalWorkerPool = exports.initializeGlobalWorkerPool = exports.getGlobalWorkerPool = exports.WorkerPool = void 0;
+exports.MetricType = exports.timed = void 0;
 exports.initializeCoreSystem = initializeCoreSystem;
 exports.shutdownCoreSystem = shutdownCoreSystem;
 exports.getSystemHealth = getSystemHealth;
@@ -64,6 +65,14 @@ var offline_analyzer_1 = require("./offline-analyzer");
 Object.defineProperty(exports, "OfflineAnalyzer", { enumerable: true, get: function () { return offline_analyzer_1.OfflineAnalyzer; } });
 Object.defineProperty(exports, "getOfflineAnalyzer", { enumerable: true, get: function () { return offline_analyzer_1.getOfflineAnalyzer; } });
 Object.defineProperty(exports, "Severity", { enumerable: true, get: function () { return offline_analyzer_1.Severity; } });
+// Extended Offline Rules (50+ additional security rules)
+var offline_rules_extended_1 = require("./offline-rules-extended");
+Object.defineProperty(exports, "EXTENDED_SECURITY_RULES", { enumerable: true, get: function () { return offline_rules_extended_1.EXTENDED_SECURITY_RULES; } });
+Object.defineProperty(exports, "getAllSecurityRules", { enumerable: true, get: function () { return offline_rules_extended_1.getAllSecurityRules; } });
+Object.defineProperty(exports, "getRulesByCategory", { enumerable: true, get: function () { return offline_rules_extended_1.getRulesByCategory; } });
+Object.defineProperty(exports, "getRulesByOWASP", { enumerable: true, get: function () { return offline_rules_extended_1.getRulesByOWASP; } });
+Object.defineProperty(exports, "getRulesByCWE", { enumerable: true, get: function () { return offline_rules_extended_1.getRulesByCWE; } });
+Object.defineProperty(exports, "getRulesByLanguage", { enumerable: true, get: function () { return offline_rules_extended_1.getRulesByLanguage; } });
 // Advanced Caching System
 var cache_manager_1 = require("./cache-manager");
 Object.defineProperty(exports, "CacheManager", { enumerable: true, get: function () { return cache_manager_1.CacheManager; } });

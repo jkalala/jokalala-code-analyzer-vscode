@@ -38,7 +38,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerFeedbackCommand = registerFeedbackCommand;
 const vscode = __importStar(require("vscode"));
+const path = __importStar(require("path"));
 const axios_1 = __importDefault(require("axios"));
+const url_validator_1 = require("../utils/url-validator");
 async function registerFeedbackCommand(context) {
     const disposable = vscode.commands.registerCommand('jokalala-code-analysis.submitFeedback', async (options) => {
         try {
@@ -109,8 +111,22 @@ async function registerFeedbackCommand(context) {
                 vscode.window.showErrorMessage('API endpoint not configured');
                 return;
             }
+            // Validate endpoint uses HTTPS before sending any data
+            (0, url_validator_1.assertHttpsUrl)(apiEndpoint, 'jokalala.apiEndpoint');
+            // Build URL safely — prevents path-traversal via injected segments
+            const feedbackUrl = (0, url_validator_1.safeJoinUrl)(apiEndpoint, 'analysis-feedback');
+            // Strip absolute file paths from location before sending —
+            // the filename can contain private directory structures.
+            const safeLocation = options.location
+                ? {
+                    file: options.location.file
+                        ? path.basename(options.location.file)
+                        : undefined,
+                    line: options.location.line,
+                }
+                : undefined;
             // Submit feedback
-            const response = await axios_1.default.post(`${apiEndpoint}/analysis-feedback`, {
+            const response = await axios_1.default.post(feedbackUrl, {
                 sessionId: context.globalState.get('sessionId') || 'vscode-session',
                 userId: context.globalState.get('userId'),
                 language: options.language,
@@ -123,7 +139,7 @@ async function registerFeedbackCommand(context) {
                 userComment,
                 issueDescription: options.issueDescription,
                 codeSnippet: options.codeSnippet,
-                location: options.location,
+                location: safeLocation,
                 analysisMode: options.analysisMode,
             }, {
                 headers: {

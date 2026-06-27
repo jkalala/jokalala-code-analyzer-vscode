@@ -153,9 +153,12 @@ suite('SecurityService Test Suite', () => {
             assert.strictEqual(sanitized, 'teststring');
         });
         test('should limit input length', () => {
-            const longInput = 'a'.repeat(15000);
+            // MAX_INPUT_LENGTH was updated to 200,000 chars; test at 250,000
+            // to verify truncation still occurs and the result is at the limit.
+            const MAX = 200000;
+            const longInput = 'a'.repeat(MAX + 50000);
             const sanitized = securityService.sanitizeInput(longInput);
-            assert.strictEqual(sanitized.length, 10000);
+            assert.strictEqual(sanitized.length, MAX);
         });
         test('should handle empty input', () => {
             assert.strictEqual(securityService.sanitizeInput(''), '');

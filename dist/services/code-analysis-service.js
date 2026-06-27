@@ -9,6 +9,21 @@ const circuit_breaker_1 = require("../utils/circuit-breaker");
 const priority_queue_1 = require("../utils/priority-queue");
 const response_validator_1 = require("../utils/response-validator");
 const retry_1 = require("../utils/retry");
+const url_validator_1 = require("../utils/url-validator");
+const typed_errors_1 = require("../utils/typed-errors");
+const secrets_prescreener_1 = require("../utils/secrets-prescreener");
+const audit_service_1 = require("./audit-service");
+// Lazily resolve audit service to avoid circular imports at module load time
+function tryGetAudit() {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { getAuditService } = require('./audit-service');
+        return getAuditService();
+    }
+    catch {
+        return null;
+    }
+}
 class CodeAnalysisService {
     constructor(configuration, logger) {
         Object.defineProperty(this, "configuration", {
@@ -211,26 +226,42 @@ class CodeAnalysisService {
         const { apiEndpoint, apiKey, requestTimeout } = this.settings;
         const analysisMode = options?.mode || this.settings.analysisMode;
         const timeout = options?.timeout || requestTimeout;
+        const audit = tryGetAudit();
         if (!apiEndpoint) {
             throw new Error('API endpoint not configured. Please set jokalala.apiEndpoint in settings.');
         }
-        // Normalize endpoint - remove trailing slash if present
-        const normalizedEndpoint = apiEndpoint.replace(/\/$/, '');
-        const fullUrl = `${normalizedEndpoint}/analyze-enhanced`;
-        this.logger.info(`[DEBUG] ====== ANALYSIS REQUEST ======`);
-        this.logger.info(`[DEBUG] Original API Endpoint: ${apiEndpoint}`);
-        this.logger.info(`[DEBUG] Normalized Endpoint: ${normalizedEndpoint}`);
-        this.logger.info(`[DEBUG] Full URL: ${fullUrl}`);
-        this.logger.info(`[DEBUG] Analysis Mode: ${analysisMode}`);
-        this.logger.info(`[DEBUG] Language: ${language}`);
-        this.logger.info(`[DEBUG] Code length: ${code.length} chars`);
+        // ── HTTPS enforcement ────────────────────────────────────────────────────
+        (0, url_validator_1.assertHttpsUrl)(apiEndpoint, 'jokalala.apiEndpoint');
+        // ── Secrets pre-screening ─────────────────────────────────────────────────
+        // Scan the code for hardcoded secrets BEFORE sending to the API.
+        const screening = (0, secrets_prescreener_1.screenForSecrets)(code);
+        if (screening.hasSecrets) {
+            audit?.record(audit_service_1.AuditEvent.ANALYSIS_SECRETS_DETECTED, {
+                requestId,
+                language,
+                findingCount: screening.findings.length,
+                severities: screening.findings.map(f => f.severity),
+            });
+            const consent = await (0, secrets_prescreener_1.requestConsentForSecretsInCode)(screening.findings);
+            if (!consent) {
+                audit?.record(audit_service_1.AuditEvent.ANALYSIS_CONSENT_DENIED, { requestId, language });
+                throw new Error('Analysis cancelled — remove hardcoded secrets from your code before sending for analysis.');
+            }
+        }
+        // ── Safe URL construction ─────────────────────────────────────────────────
+        const fullUrl = (0, url_validator_1.safeJoinUrl)(apiEndpoint, 'analyze-enhanced');
+        this.logger.info(`Analysis request queued`, { requestId, language, mode: analysisMode, codeLength: code.length });
+        audit?.record(audit_service_1.AuditEvent.ANALYSIS_REQUESTED, {
+            requestId,
+            language,
+            mode: analysisMode,
+            codeLength: code.length,
+        });
         // Create abort controller for this request
         const abortController = new AbortController();
         this.activeRequests.set(requestId, abortController);
         try {
-            this.logger.info(`[DEBUG] Executing request via circuit breaker...`);
-            // Execute request with circuit breaker protection
-            const response = await this.circuitBreaker.execute(normalizedEndpoint, () => axios_1.default.post(fullUrl, {
+            const response = await this.circuitBreaker.execute(apiEndpoint, () => axios_1.default.post(fullUrl, {
                 code,
                 language,
                 analysisMode,
@@ -262,52 +293,45 @@ class CodeAnalysisService {
                 catch (error) {
                     if (error instanceof response_validator_1.ValidationError) {
                         this.logger.warn(`Response validation failed: ${error.message}. Sanitizing response.`);
-                        // Sanitize the response to ensure it has all required fields
                         const sanitized = (0, response_validator_1.sanitizeAnalysisResult)(data);
                         sanitized.requestId = requestId;
                         return sanitized;
                     }
                     throw error;
                 }
-                // Add request ID
                 data.requestId = requestId;
+                audit?.record(audit_service_1.AuditEvent.ANALYSIS_COMPLETED, { requestId, language, issueCount: data.issues?.length ?? 0 });
                 return data;
             }
             else {
                 throw new Error(response.data.error?.message || 'Analysis failed');
             }
         }
-        catch (error) {
-            this.logger.error(`[DEBUG] ====== REQUEST FAILED ======`);
-            this.logger.error(`[DEBUG] Error type: ${error.name || 'Unknown'}`);
-            this.logger.error(`[DEBUG] Error message: ${error.message}`);
-            this.logger.error(`[DEBUG] Has response: ${!!error.response}`);
-            this.logger.error(`[DEBUG] Has request: ${!!error.request}`);
-            if (error.response) {
-                this.logger.error(`[DEBUG] Response status: ${error.response.status}`);
-                this.logger.error(`[DEBUG] Response URL: ${error.response.config?.url}`);
-            }
-            if (error.config) {
-                this.logger.error(`[DEBUG] Request URL: ${error.config.url}`);
-                this.logger.error(`[DEBUG] Request method: ${error.config.method}`);
-            }
-            this.logger.error('Code analysis request failed', error);
-            if (axios_1.default.isCancel(error)) {
+        catch (e) {
+            const appError = (0, typed_errors_1.normaliseError)(e);
+            this.logger.error('Code analysis request failed', appError);
+            audit?.record(audit_service_1.AuditEvent.ANALYSIS_FAILED, {
+                requestId,
+                language,
+                errorCode: appError.code,
+                // errorMessage deliberately omitted from audit — may contain code snippets
+            });
+            if (axios_1.default.isCancel(e)) {
+                audit?.record(audit_service_1.AuditEvent.ANALYSIS_CANCELLED, { requestId });
                 throw new Error('Analysis request was cancelled');
             }
-            if (error.response) {
-                const status = error.response.status;
+            const axiosError = e;
+            if (axiosError.response) {
+                const status = axiosError.response.status;
                 if (status === 404) {
-                    throw new Error(`API endpoint not found (404). URL attempted: ${error.config?.url || fullUrl}. Start the Jokalala backend: pnpm dev`);
+                    throw new Error(`Analysis endpoint not found (404). Check jokalala.apiEndpoint in your settings.`);
                 }
-                throw new Error(`API Error (${status}): ${error.response.data?.error?.message || error.message}`);
+                throw new Error(`API Error (${status}): ${axiosError.response.data?.error?.message ?? (0, typed_errors_1.getErrorMessage)(e)}`);
             }
-            else if (error.request) {
-                throw new Error(`Cannot connect to server at ${fullUrl}. Start the Jokalala backend with: pnpm dev`);
+            else if (axiosError.request) {
+                throw new Error(`Cannot connect to the Jokalala API. Check your jokalala.apiEndpoint setting and network connection.`);
             }
-            else {
-                throw new Error(`Request failed: ${error.message}`);
-            }
+            throw appError;
         }
         finally {
             this.activeRequests.delete(requestId);

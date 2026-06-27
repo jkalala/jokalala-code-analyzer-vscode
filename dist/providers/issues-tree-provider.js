@@ -270,8 +270,9 @@ class IssuesTreeProvider {
     }
     createSummaryNode() {
         const s = this.summaryData;
+        const filesWithIssues = this.fileResults.filter(f => f.issues.length > 0).length;
         const scoreText = s.overallScore !== undefined ? ` • Score: ${s.overallScore}/100` : '';
-        const label = `📊 Summary: ${s.totalIssues} issues in ${s.totalFiles} files${scoreText}`;
+        const label = `📊 Files with Issues: ${filesWithIssues}/${s.totalFiles} • ${s.totalIssues} total${scoreText}`;
         const item = new IssueTreeItem(label, vscode.TreeItemCollapsibleState.None, 'summary');
         // Build detailed tooltip
         const tooltipLines = [

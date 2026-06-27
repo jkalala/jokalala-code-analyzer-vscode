@@ -52,11 +52,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PluginManager = exports.PluginStatus = exports.PluginType = void 0;
 exports.getPluginManager = getPluginManager;
 exports.initializePluginManager = initializePluginManager;
+const crypto = __importStar(require("crypto"));
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const events_1 = require("events");
 const custom_rules_1 = require("../core/custom-rules");
+const typed_errors_1 = require("../utils/typed-errors");
+const plugin_sandbox_1 = require("./plugin-sandbox");
 /**
  * Plugin types supported by the system
  */
@@ -217,6 +220,13 @@ class PluginManager extends events_1.EventEmitter {
             if (this.plugins.size >= this.config.maxPlugins) {
                 throw new Error(`Maximum plugin limit (${this.config.maxPlugins}) reached`);
             }
+            // ── Integrity verification ───────────────────────────────────────────
+            // Block plugins whose files have changed since the trusted baseline.
+            // This detects supply-chain tampering (e.g. a plugin directory being
+            // replaced by a malicious version after initial installation).
+            if (!this.verifyPluginIntegrity(manifest.id, pluginPath)) {
+                throw new typed_errors_1.PluginSecurityError(manifest.id, 'files changed since trusted baseline was recorded — reload VS Code after manually reviewing the plugin');
+            }
             // Create loaded plugin entry
             const loadedPlugin = {
                 manifest,
@@ -242,13 +252,22 @@ class PluginManager extends events_1.EventEmitter {
                     this.ruleEngine.addRulePack(pack);
                 }
             }
-            // Load main module if specified
+            // Load main module if specified — guard against path-traversal attacks
+            // (e.g. manifest.main = "../../node_modules/evil").
             if (manifest.main) {
-                const mainPath = path.join(pluginPath, manifest.main);
-                if (fs.existsSync(mainPath)) {
+                const resolvedMain = path.resolve(pluginPath, manifest.main);
+                const resolvedBase = path.resolve(pluginPath);
+                // Reject any path that escapes the plugin directory
+                if (!resolvedMain.startsWith(resolvedBase + path.sep) && resolvedMain !== resolvedBase) {
+                    this.logError(`Plugin ${manifest.id} rejected: manifest.main escapes plugin directory`, new Error(`Path traversal: "${manifest.main}" resolves to "${resolvedMain}"`));
+                    loadedPlugin.status = PluginStatus.ERROR;
+                    loadedPlugin.error = 'Plugin manifest.main path is outside the plugin directory';
+                }
+                else if (fs.existsSync(resolvedMain)) {
                     try {
-                        // Dynamic import for plugin modules
-                        loadedPlugin.instance = require(mainPath);
+                        // Dynamic require is unavoidable for a plugin system — path is
+                        // now verified to be within the plugin's own directory.
+                        loadedPlugin.instance = require(resolvedMain);
                     }
                     catch (e) {
                         this.logError(`Failed to load plugin module: ${manifest.id}`, e);
@@ -258,15 +277,17 @@ class PluginManager extends events_1.EventEmitter {
             // Store plugin
             this.plugins.set(manifest.id, loadedPlugin);
             loadedPlugin.status = PluginStatus.ENABLED;
-            // Activate plugin if it has an activate function
+            // Activate plugin through the sandbox (enforces timeout + restricted context)
             if (loadedPlugin.instance?.activate && this.context) {
-                try {
-                    await loadedPlugin.instance.activate(this.createPluginContext(pluginPath));
+                const sandboxResult = await (0, plugin_sandbox_1.activatePluginSandboxed)(loadedPlugin, this.context, this.ruleEngine);
+                // Forward plugin log messages to our output channel
+                for (const msg of sandboxResult.logMessages) {
+                    this.log(msg);
                 }
-                catch (e) {
+                if (!sandboxResult.success) {
                     loadedPlugin.status = PluginStatus.ERROR;
-                    loadedPlugin.error = e.message;
-                    this.logError(`Failed to activate plugin: ${manifest.id}`, e);
+                    loadedPlugin.error = sandboxResult.error;
+                    this.logError(`Plugin activation failed: ${manifest.id} (${sandboxResult.durationMs}ms)`, new Error(sandboxResult.error ?? 'Unknown error'));
                 }
             }
             this.log(`Plugin loaded: ${manifest.displayName || manifest.name} v${manifest.version}`);
@@ -278,6 +299,67 @@ class PluginManager extends events_1.EventEmitter {
             return null;
         }
     }
+    // ── Integrity verification ───────────────────────────────────────────────
+    /**
+     * Compute a SHA-256 hash over all files in a plugin directory.
+     * The hash is stable for a given set of file contents regardless of
+     * file system timestamps.
+     */
+    computePluginHash(pluginPath) {
+        const hasher = crypto.createHash('sha256');
+        const collectFiles = (dir) => {
+            const result = [];
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    result.push(...collectFiles(full));
+                }
+                else {
+                    result.push(full);
+                }
+            }
+            return result.sort(); // deterministic order
+        };
+        for (const file of collectFiles(pluginPath)) {
+            // Hash relative path + content so renames are also detected
+            const rel = path.relative(pluginPath, file);
+            hasher.update(`PATH:${rel}`);
+            hasher.update(fs.readFileSync(file));
+        }
+        return hasher.digest('hex');
+    }
+    /**
+     * Verify plugin integrity against the stored baseline.
+     *
+     * On first load the hash is stored as the trusted baseline.
+     * On subsequent loads, if the hash differs, the plugin is blocked
+     * and an audit event is emitted.
+     *
+     * @returns `true` if the plugin passes the integrity check.
+     */
+    verifyPluginIntegrity(pluginId, pluginPath) {
+        const storageKey = `jokalala.plugins.integrity.${pluginId}`;
+        const currentHash = this.computePluginHash(pluginPath);
+        if (!this.context)
+            return true; // Can't verify without context — allow
+        const storedHash = this.context.globalState.get(storageKey);
+        if (!storedHash) {
+            // First time seeing this plugin — record the baseline hash
+            this.context.globalState.update(storageKey, currentHash);
+            this.log(`Plugin "${pluginId}" — integrity baseline recorded`);
+            return true;
+        }
+        if (storedHash !== currentHash) {
+            this.logError(`Plugin "${pluginId}" integrity check FAILED — files have changed since last load`, new typed_errors_1.PluginSecurityError(pluginId, 'plugin files changed since baseline was recorded'));
+            this.emit('plugin-error', {
+                pluginId,
+                error: new typed_errors_1.PluginSecurityError(pluginId, 'integrity check failed'),
+            });
+            return false;
+        }
+        return true;
+    }
+    // ── End integrity section ────────────────────────────────────────────────
     /**
      * Load a single rule file
      */
