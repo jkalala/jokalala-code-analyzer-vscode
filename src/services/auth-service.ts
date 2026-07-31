@@ -6,10 +6,12 @@
  * Flow:
  * 1. User runs "Jokalala: Sign In" command
  * 2. Extension opens browser to https://jokalala.com/vscode-auth
- * 3. Web app authenticates user and redirects to:
- *    vscode://jokalala.code-analyzer/auth?token=<jwt>&userId=<id>
+ * 3. Web app verifies the user's (short-lived) web session, exchanges it for a
+ *    persistent `jkl_…` API key server-side, and redirects to:
+ *    vscode://jokalala.jokalala-code-analysis/auth?token=<jkl_...>&userId=<id>
  * 4. VS Code handles the URI, extension receives token via onUri handler
- * 5. Token stored in SecretStorage — persists across restarts
+ * 5. Token stored in SecretStorage — persists across restarts (no expiry;
+ *    revoked server-side if the user rotates it by signing in again elsewhere)
  * 6. All API calls include Authorization: Bearer <token>
  */
 
@@ -79,11 +81,17 @@ export class AuthService {
   }
 
   /**
-   * Basic structural check: a JWT has exactly three dot-separated Base64url segments.
-   * This does NOT verify the signature — that is done by the server — but it prevents
-   * storing garbage or injected values in SecretStorage.
+   * Basic structural check on the credential returned by the auth callback.
+   * The backend hands back either a persistent `jkl_<tier>_<hex>` API key
+   * (the normal case since it mints one during the callback) or, for older
+   * backends, a raw JWT (three dot-separated Base64url segments). This does
+   * NOT verify the signature/validity — that is done by the server — but it
+   * prevents storing garbage or injected values in SecretStorage.
    */
   private isJwtShaped(token: string): boolean {
+    if (token.startsWith('jkl_')) {
+      return /^jkl_[A-Za-z0-9_-]{10,200}$/.test(token)
+    }
     const parts = token.split('.')
     if (parts.length !== 3) return false
     // Each part must be non-empty and Base64url-safe characters only
