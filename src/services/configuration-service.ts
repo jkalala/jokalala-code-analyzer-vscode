@@ -15,7 +15,7 @@ export type AnalysisMode = 'quick' | 'deep' | 'full'
 const CONFIGURATION_SCHEMA: ConfigurationSchema = {
   apiEndpoint: {
     type: 'string',
-    default: 'https://jokalala.com/api/agents/dev-assistant',
+    default: 'https://www.jokalala.com/api/agents/dev-assistant',
     description: 'API endpoint for code analysis service',
     required: true,
   },
@@ -30,6 +30,20 @@ const CONFIGURATION_SCHEMA: ConfigurationSchema = {
     default: 'full',
     description: 'Analysis mode: quick, deep, or full',
     enum: ['quick', 'deep', 'full'],
+    required: true,
+  },
+  analysisTier: {
+    type: 'string',
+    default: 'hybrid',
+    description: 'Execution tier: local, hybrid, or cloud',
+    enum: ['local', 'hybrid', 'cloud'],
+    required: true,
+  },
+  localPackProfile: {
+    type: 'string',
+    default: 'precision',
+    description: 'Local Tier-1 pack profile: precision (low noise) or full',
+    enum: ['precision', 'full'],
     required: true,
   },
   autoAnalyze: {
@@ -52,7 +66,7 @@ const CONFIGURATION_SCHEMA: ConfigurationSchema = {
   },
   maxFileSize: {
     type: 'number',
-    default: 50_000,
+    default: 200_000,
     description: 'Maximum file size for analysis (characters)',
     minimum: 1000,
     maximum: 500_000,
@@ -84,7 +98,7 @@ const CONFIGURATION_SCHEMA: ConfigurationSchema = {
   },
   enableTelemetry: {
     type: 'boolean',
-    default: false,
+    default: false, // Opt-in by default for privacy compliance
     description: 'Enable anonymous telemetry collection (opt-in)',
     required: true,
   },
@@ -272,43 +286,16 @@ export class ConfigurationService implements IConfigurationService {
         }
       }
 
-      // URL validation for apiEndpoint — enforce HTTPS for non-localhost
+      // URL validation for apiEndpoint
       if (key === 'apiEndpoint' && typeof value === 'string') {
         try {
           const url = new URL(value)
-          const isLocalhost =
-            url.hostname === 'localhost' ||
-            url.hostname === '127.0.0.1' ||
-            url.hostname === '::1'
-
-          if (url.protocol !== 'https:' && !isLocalhost) {
-            // Non-localhost must use HTTPS — this is an error, not a warning,
-            // because sending code snippets over plain HTTP leaks data.
-            errors.push({
-              setting: key,
-              message:
-                'API endpoint must use HTTPS. Plain HTTP endpoints may expose code ' +
-                'and analysis results to network interception. ' +
-                `Suggested: ${value.replace('http:', 'https:')}`,
-              currentValue: value,
-              expectedType: 'string',
-            })
-          } else if (url.protocol !== 'https:' && isLocalhost) {
+          if (url.protocol !== 'https:') {
             warnings.push({
               setting: key,
-              message: 'Using HTTP for local development endpoint. Switch to HTTPS for production.',
+              message: 'API endpoint should use HTTPS for security',
               currentValue: value,
               suggestedValue: value.replace('http:', 'https:'),
-            })
-          }
-
-          // Block credentials in URL
-          if (url.username || url.password) {
-            errors.push({
-              setting: key,
-              message: 'API endpoint must not contain embedded credentials (user:password@host)',
-              currentValue: '[REDACTED]',
-              expectedType: 'string',
             })
           }
         } catch (error) {

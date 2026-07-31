@@ -3,46 +3,39 @@
 .vscode-test/**
 src/**
 out/test/**
+_vsix_check/**
+_vsix.zip
+scripts/**
+!scripts/smoke-secure-endpoint.js
 
 # Config files
 .gitignore
 .yarnrc
-vsc-extension-quickstart.md
 **/tsconfig.json
 **/.eslintrc.json
-.prettierrc
-.editorconfig
 
-# Build artifacts
+# Build artifacts — only ship bundled extension entry
 **/*.map
 **/*.ts
-!dist/**/*.js
-!node_modules/axios/**
+dist/**
+!dist/extension.js
 
-# GitHub specific
+# Dependencies are bundled
+node_modules/**
+vendor/**
+packages/**
+
+# Docs noise
 .github/**
+docs/**
+!README.md
+!CHANGELOG.md
+!LICENSE*
 
-# Documentation (keep README)
-CONTRIBUTING.md
-CODE_OF_CONDUCT.md
-SECURITY.md
-TASK_*.md
-*_COMPLETION.md
-*_SUMMARY.md
-PROJECT_STRUCTURE*.md
-COMPREHENSIVE_AUDIT*.md
-CONFIGURATION_EXAMPLES.md
-SETUP_SUMMARY.md
-API_KEY_SETUP_GUIDE.md
-PUBLISHING.md
-EXTENSION_PACKAGING_COMPLETE.md
-
-# Test files
+# Test / package junk
 **/*.test.ts
 **/*.spec.ts
 coverage/**
-.nyc_output/**
-
-# Package files
 *.vsix
-node_modules/.package-lock.json
+package-lock.json
+pnpm-lock.yaml

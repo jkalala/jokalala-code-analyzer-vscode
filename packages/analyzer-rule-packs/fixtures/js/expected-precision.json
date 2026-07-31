@@ -1,0 +1,14 @@
+{
+  "fixtures": [
+    { "file": "01-eval.js", "language": "javascript", "expectAnyOf": ["js-eval-call"] },
+    { "file": "02-innerhtml.js", "language": "javascript", "expectAnyOf": ["js-innerhtml-assignment"] },
+    { "file": "03-child-process.js", "language": "javascript", "expectAnyOf": ["js-child-process-exec"] },
+    { "file": "04-sql-concat.js", "language": "javascript", "expectAnyOf": ["js-sql-string-concat"] },
+    { "file": "05-dangerously-set.jsx", "language": "javascript", "expectAnyOf": ["js-dangerously-set-inner-html"] },
+    { "file": "06-document-write.js", "language": "javascript", "expectAnyOf": ["js-document-write"] },
+    { "file": "07-new-function.js", "language": "javascript", "expectAnyOf": ["js-new-function"] },
+    { "file": "08-aws-key.js", "language": "javascript", "expectAnyOf": ["aws-access-key-id"] },
+    { "file": "09-api-key.js", "language": "javascript", "expectAnyOf": ["generic-api-key-assignment"] },
+    { "file": "10-eval-in-function.js", "language": "javascript", "expectAnyOf": ["js-eval-call"] }
+  ]
+}

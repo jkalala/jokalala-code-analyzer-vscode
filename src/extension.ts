@@ -21,6 +21,7 @@ import { SCATreeProvider, registerSCATreeView } from './providers/sca-tree-provi
 import { ContainerIaCTreeProvider, registerContainerIaCTreeView } from './providers/container-iac-tree-provider'
 import { PluginsTreeProvider, registerPluginsTreeView, registerPluginCommands } from './providers/plugins-tree-provider'
 import { registerEnhancedCodeActionProvider } from './providers/enhanced-code-action-provider'
+import { debounce } from './utils/debounce'
 import { AuthService } from './services/auth-service'
 import { CodeAnalysisService } from './services/code-analysis-service'
 import { ConfigurationService } from './services/configuration-service'
@@ -1003,13 +1004,19 @@ export async function activate(context: vscode.ExtensionContext) {
     )
   )
 
-  // Auto-analyze on save if enabled
+  // Auto-analyze on save: local Tier-1 only (quick → $0 infra)
+  const debouncedAnalyzeDocument = debounce((document: vscode.TextDocument) => {
+    const settings = configurationService.getSettings()
+    if (settings.autoAnalyze) {
+      analyzeDocument(document, { mode: 'quick' }).catch(error => {
+        logger.error('Error in auto-analyze on save', error as Error)
+      })
+    }
+  }, 1000)
+
   context.subscriptions.push(
     vscode.workspace.onDidSaveTextDocument(document => {
-      const settings = configurationService.getSettings()
-      if (settings.autoAnalyze) {
-        analyzeDocument(document)
-      }
+      debouncedAnalyzeDocument(document)
     })
   )
 
@@ -1079,7 +1086,10 @@ async function analyzeSelection() {
   resetStatusBar()
 }
 
-async function analyzeDocument(document: vscode.TextDocument) {
+async function analyzeDocument(
+  document: vscode.TextDocument,
+  options?: { mode?: 'quick' | 'deep' | 'full' }
+) {
   const settings = configurationService.getSettings()
   const maxFileSize = settings.maxFileSize
   const resetStatusBar = enterAnalyzingState(
@@ -1105,7 +1115,9 @@ async function analyzeDocument(document: vscode.TextDocument) {
       try {
         const code = document.getText()
         const language = document.languageId
-        const result = await codeAnalysisService.analyzeCode(code, language)
+        const result = await codeAnalysisService.analyzeCode(code, language, {
+          mode: options?.mode || settings.analysisMode,
+        })
 
         logger.info('Analysis result received', {
           issues: result.prioritizedIssues?.length || 0,

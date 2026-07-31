@@ -100,6 +100,11 @@ export interface AnalysisResult {
   metadata?: {
     hasV2Report?: boolean
     v2AnalyzerVersion?: string
+    analysisTier?: string
+    rulesVersion?: string
+    packs?: string
+    localPacks?: unknown
+    [key: string]: unknown
   }
 }
 
@@ -123,6 +128,7 @@ export interface FileAnalysisResult {
 
 export interface Issue {
   id?: string
+  ruleId?: string
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
   category: string
   message: string
@@ -142,6 +148,7 @@ export interface Issue {
   column?: number
   /** File path where the issue was found (for project analysis) */
   filePath?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface CodeLocation {

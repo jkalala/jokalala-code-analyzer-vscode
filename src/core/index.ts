@@ -47,6 +47,12 @@ export {
   type OfflineAnalysisResult,
 } from './offline-analyzer'
 
+// Local Deterministic Engine (Tier 1)
+export {
+  LocalDeterministicEngine,
+  getLocalDeterministicEngine,
+} from './local-deterministic-engine'
+
 // Extended Offline Rules (50+ additional security rules)
 export {
   EXTENDED_SECURITY_RULES,

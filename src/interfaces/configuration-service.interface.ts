@@ -60,6 +60,10 @@ export interface ExtensionSettings {
   apiEndpoint: string
   apiKey: string
   analysisMode: 'quick' | 'deep' | 'full'
+  /** local = Tier-1 only; hybrid = local then cloud merge; cloud = API only */
+  analysisTier: 'local' | 'hybrid' | 'cloud'
+  /** precision = secrets+javascript (default); full = + Semgrep-lite patterns */
+  localPackProfile: 'precision' | 'full'
   autoAnalyze: boolean
   showInlineWarnings: boolean
   enableDiagnostics: boolean

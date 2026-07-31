@@ -31,6 +31,8 @@ import {
 import { AuditEvent } from './audit-service'
 import { ConfigurationService } from './configuration-service'
 import { Logger } from './logger'
+import { getOfflineAnalyzer } from '../core/offline-analyzer'
+import type { Issue } from '../interfaces/code-analysis-service.interface'
 
 // Lazily resolve audit service to avoid circular imports at module load time
 function tryGetAudit() {
@@ -239,6 +241,150 @@ export class CodeAnalysisService implements ICodeAnalysisService {
   }
 
   /**
+   * Resolve effective tier from settings + analysis mode.
+   * quick → local; deep/full → respect analysisTier (default hybrid).
+   */
+  private resolveAnalysisTier(
+    analysisMode: string
+  ): 'local' | 'hybrid' | 'cloud' {
+    const configured =
+      (this.settings as ExtensionSettings & { analysisTier?: string })
+        .analysisTier || 'hybrid'
+    if (analysisMode === 'quick') return 'local'
+    if (configured === 'local' || configured === 'cloud' || configured === 'hybrid') {
+      return configured
+    }
+    return 'hybrid'
+  }
+
+  private issueDedupeKey(issue: Issue): string {
+    const line =
+      issue.line ??
+      issue.location?.startLine ??
+      0
+    const cwe =
+      (Array.isArray((issue as { cwe?: string[] }).cwe) &&
+        (issue as { cwe?: string[] }).cwe?.[0]) ||
+      (issue.metadata && typeof issue.metadata.cweId === 'string'
+        ? String(issue.metadata.cweId)
+        : null) ||
+      issue.ruleId ||
+      issue.category ||
+      issue.id ||
+      issue.message
+    return `${cwe}:${line}`
+  }
+
+  private mergeLocalAndCloud(
+    local: AnalysisResult,
+    cloud: AnalysisResult,
+    requestId: string
+  ): AnalysisResult {
+    const seen = new Set<string>()
+    const merged: Issue[] = []
+    for (const issue of local.prioritizedIssues || []) {
+      const key = this.issueDedupeKey(issue)
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push({
+        ...issue,
+        tags: [...(issue.tags || []), 'local-pack', 'tier-1'],
+      })
+    }
+    for (const issue of cloud.prioritizedIssues || []) {
+      const key = this.issueDedupeKey(issue)
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push({
+        ...issue,
+        tags: [...(issue.tags || []), 'cloud', 'tier-2'],
+      })
+    }
+    const countBy = (sev: string) =>
+      merged.filter(i => String(i.severity).toLowerCase() === sev).length
+    return {
+      ...cloud,
+      prioritizedIssues: merged,
+      summary: {
+        totalIssues: merged.length,
+        criticalIssues: countBy('critical'),
+        highIssues: countBy('high'),
+        mediumIssues: countBy('medium'),
+        lowIssues: countBy('low'),
+        analysisTime:
+          (local.summary?.analysisTime || 0) + (cloud.summary?.analysisTime || 0),
+      },
+      requestId,
+      metadata: {
+        ...(cloud.metadata || {}),
+        analysisTier: 'hybrid',
+      },
+    }
+  }
+
+  private runOfflineAnalysis(
+    code: string,
+    language: string,
+    requestId: string
+  ): AnalysisResult {
+    const offline = getOfflineAnalyzer()
+    const profile =
+      ((this.settings as ExtensionSettings & { localPackProfile?: string })
+        .localPackProfile as 'precision' | 'full') || 'precision'
+    const result = offline.analyze(code, language, { packProfile: profile })
+    const prioritizedIssues: Issue[] = result.issues.map(issue => ({
+      id: issue.id,
+      severity: String(issue.severity).toLowerCase() as Issue['severity'],
+      category: issue.category || issue.ruleId,
+      message: issue.message || issue.title || issue.description,
+      suggestion: issue.suggestion,
+      source: 'static' as const,
+      codeSnippet: issue.codeSnippet,
+      line: issue.line,
+      column: issue.column,
+      location: {
+        startLine: issue.line,
+        endLine: issue.endLine ?? issue.line,
+        startColumn: issue.column,
+        endColumn: issue.endColumn,
+      },
+      tags: ['local-pack', 'tier-1'],
+      ruleId: issue.ruleId,
+      metadata: {
+        ...(issue.metadata || {}),
+        source: 'local-pack',
+        engineTier: 1,
+      },
+    }))
+
+    return {
+      prioritizedIssues,
+      recommendations: [
+        {
+          title: 'Local Tier-1 analysis',
+          description:
+            'Results from bundled deterministic rule packs (no cloud).',
+          category: 'general',
+        },
+      ],
+      summary: {
+        totalIssues: result.summary.totalIssues,
+        criticalIssues: result.summary.criticalCount,
+        highIssues: result.summary.highCount,
+        mediumIssues: result.summary.mediumCount,
+        lowIssues: result.summary.lowCount,
+        analysisTime: result.summary.analysisTime,
+      },
+      requestId,
+      metadata: {
+        hasV2Report: false,
+        v2AnalyzerVersion: 'local-tier1',
+        rulesVersion: result.metadata.rulesVersion,
+      },
+    }
+  }
+
+  /**
    * Perform the actual analysis (internal method)
    */
   private async performAnalysis(
@@ -251,8 +397,33 @@ export class CodeAnalysisService implements ICodeAnalysisService {
     const analysisMode = options?.mode || this.settings.analysisMode
     const timeout = options?.timeout || requestTimeout
     const audit = tryGetAudit()
+    const tier = this.resolveAnalysisTier(analysisMode)
+
+    this.logger.info(`Analysis request queued`, {
+      requestId,
+      language,
+      mode: analysisMode,
+      tier,
+      codeLength: code.length,
+    })
+
+    if (tier === 'local') {
+      const local = this.runOfflineAnalysis(code, language, requestId)
+      audit?.record(AuditEvent.ANALYSIS_COMPLETED, {
+        requestId,
+        language,
+        issueCount: local.prioritizedIssues?.length ?? 0,
+      })
+      return local
+    }
+
+    const localResult =
+      tier === 'hybrid'
+        ? this.runOfflineAnalysis(code, language, requestId)
+        : null
 
     if (!apiEndpoint) {
+      if (localResult) return localResult
       throw new Error(
         'API endpoint not configured. Please set jokalala.apiEndpoint in settings.'
       )
@@ -261,8 +432,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
     // ── HTTPS enforcement ────────────────────────────────────────────────────
     assertHttpsUrl(apiEndpoint, 'jokalala.apiEndpoint')
 
-    // ── Secrets pre-screening ─────────────────────────────────────────────────
-    // Scan the code for hardcoded secrets BEFORE sending to the API.
+    // ── Secrets pre-screening (cloud path only) ───────────────────────────────
     const screening = screenForSecrets(code)
     if (screening.hasSecrets) {
       audit?.record(AuditEvent.ANALYSIS_SECRETS_DETECTED, {
@@ -275,16 +445,14 @@ export class CodeAnalysisService implements ICodeAnalysisService {
       const consent = await requestConsentForSecretsInCode(screening.findings)
       if (!consent) {
         audit?.record(AuditEvent.ANALYSIS_CONSENT_DENIED, { requestId, language })
+        if (localResult) return localResult
         throw new Error(
           'Analysis cancelled — remove hardcoded secrets from your code before sending for analysis.'
         )
       }
     }
 
-    // ── Safe URL construction ─────────────────────────────────────────────────
     const fullUrl = safeJoinUrl(apiEndpoint, 'analyze-enhanced')
-
-    this.logger.info(`Analysis request queued`, { requestId, language, mode: analysisMode, codeLength: code.length })
 
     audit?.record(AuditEvent.ANALYSIS_REQUESTED, {
       requestId,
@@ -293,7 +461,6 @@ export class CodeAnalysisService implements ICodeAnalysisService {
       codeLength: code.length,
     })
 
-    // Create abort controller for this request
     const abortController = new AbortController()
     this.activeRequests.set(requestId, abortController)
 
@@ -307,7 +474,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
             analysisMode,
             context: {
               source: 'vscode-extension',
-              version: '1.0.0',
+              version: '2.4.2',
               requestId,
             },
           },
@@ -325,7 +492,6 @@ export class CodeAnalysisService implements ICodeAnalysisService {
       if (response.data.success) {
         const data = response.data.data
 
-        // Transform recommendations if they're strings
         if (Array.isArray(data.recommendations)) {
           data.recommendations = data.recommendations.map((rec: unknown) =>
             typeof rec === 'string'
@@ -334,7 +500,6 @@ export class CodeAnalysisService implements ICodeAnalysisService {
           )
         }
 
-        // Validate the response
         try {
           validateAnalysisResult(data)
         } catch (error) {
@@ -342,14 +507,25 @@ export class CodeAnalysisService implements ICodeAnalysisService {
             this.logger.warn(`Response validation failed: ${error.message}. Sanitizing response.`)
             const sanitized = sanitizeAnalysisResult(data)
             sanitized.requestId = requestId
+            if (localResult) {
+              return this.mergeLocalAndCloud(localResult, sanitized, requestId)
+            }
             return sanitized
           }
           throw error
         }
 
         data.requestId = requestId
-        audit?.record(AuditEvent.ANALYSIS_COMPLETED, { requestId, language, issueCount: data.issues?.length ?? 0 })
-        return data as AnalysisResult
+        audit?.record(AuditEvent.ANALYSIS_COMPLETED, {
+          requestId,
+          language,
+          issueCount: data.prioritizedIssues?.length ?? data.issues?.length ?? 0,
+        })
+        const cloud = data as AnalysisResult
+        if (localResult) {
+          return this.mergeLocalAndCloud(localResult, cloud, requestId)
+        }
+        return cloud
       } else {
         throw new Error(response.data.error?.message || 'Analysis failed')
       }
@@ -360,7 +536,6 @@ export class CodeAnalysisService implements ICodeAnalysisService {
         requestId,
         language,
         errorCode: appError.code,
-        // errorMessage deliberately omitted from audit — may contain code snippets
       })
 
       if (axios.isCancel(e)) {
@@ -368,7 +543,16 @@ export class CodeAnalysisService implements ICodeAnalysisService {
         throw new Error('Analysis request was cancelled')
       }
 
-      const axiosError = e as { response?: { status: number; data?: { error?: { message?: string } } }; request?: unknown }
+      // Fail open to local Tier-1 when hybrid/network fails
+      if (localResult) {
+        this.logger.warn('Cloud analysis failed; returning local Tier-1 findings')
+        return localResult
+      }
+
+      const axiosError = e as {
+        response?: { status: number; data?: { error?: { message?: string } } }
+        request?: unknown
+      }
       if (axiosError.response) {
         const status = axiosError.response.status
         if (status === 404) {
@@ -380,7 +564,14 @@ export class CodeAnalysisService implements ICodeAnalysisService {
           `API Error (${status}): ${axiosError.response.data?.error?.message ?? getErrorMessage(e)}`
         )
       } else if (axiosError.request) {
-        throw new Error(`Cannot connect to the Jokalala API. Check your jokalala.apiEndpoint setting and network connection.`)
+        // Try offline as last resort
+        try {
+          return this.runOfflineAnalysis(code, language, requestId)
+        } catch {
+          throw new Error(
+            `Cannot connect to the Jokalala API. Check your jokalala.apiEndpoint setting and network connection.`
+          )
+        }
       }
 
       throw appError

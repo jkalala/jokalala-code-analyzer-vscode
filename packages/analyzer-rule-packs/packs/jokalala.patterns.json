@@ -1,0 +1,248 @@
+{
+  "id": "jokalala.patterns",
+  "name": "Jokalala Semgrep-lite Patterns",
+  "version": "1.6.0",
+  "description": "Opt-in Semgrep-lite rules incl. metavariable-comparison (P5a–P5k). Does not load by default.",
+  "author": "Jokalala",
+  "license": "MIT",
+  "rules": [
+    {
+      "id": "js-eval-arg",
+      "cweId": "CWE-95",
+      "name": "eval/Function with dynamic argument",
+      "category": "injection",
+      "severity": "high",
+      "languages": ["javascript", "typescript"],
+      "patterns": [
+        {
+          "type": "pattern-either",
+          "patterns": [
+            {
+              "type": "pattern",
+              "value": "eval($CODE)",
+              "flags": "g",
+              "metavariableRegex": {
+                "CODE": "[^)]+"
+              }
+            },
+            {
+              "type": "pattern",
+              "value": "new Function($CODE)",
+              "flags": "g",
+              "metavariableRegex": {
+                "CODE": "[^)]+"
+              }
+            }
+          ]
+        },
+        {
+          "type": "pattern-not",
+          "pattern": {
+            "type": "regex",
+            "value": "eval\\s*\\(\\s*['\"][^'\"]*['\"]\\s*\\)",
+            "flags": "g"
+          }
+        }
+      ],
+      "message": "Dynamic eval()/Function() argument — possible code injection",
+      "recommendation": "Avoid eval; use JSON.parse or a safe interpreter",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-eval-in-function",
+      "cweId": "CWE-95",
+      "name": "eval inside function body",
+      "category": "injection",
+      "severity": "high",
+      "languages": ["javascript", "typescript"],
+      "patterns": [
+        {
+          "type": "pattern",
+          "value": "eval($CODE)",
+          "flags": "g",
+          "metavariableRegex": {
+            "CODE": "[^)]+"
+          }
+        },
+        {
+          "type": "pattern-inside",
+          "pattern": {
+            "type": "pattern",
+            "value": "function $NAME(...) { ... }",
+            "flags": "g",
+            "metavariableRegex": {
+              "NAME": "[\\w$]+"
+            }
+          }
+        },
+        {
+          "type": "pattern-not",
+          "pattern": {
+            "type": "regex",
+            "value": "eval\\s*\\(\\s*['\"][^'\"]*['\"]\\s*\\)",
+            "flags": "g"
+          }
+        }
+      ],
+      "message": "Dynamic eval() inside a function body",
+      "recommendation": "Avoid eval; use JSON.parse or a safe interpreter",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-eval-not-in-test",
+      "cweId": "CWE-95",
+      "name": "eval outside test suite",
+      "category": "injection",
+      "severity": "high",
+      "languages": ["javascript", "typescript"],
+      "patterns": [
+        {
+          "type": "pattern",
+          "value": "eval($CODE)",
+          "flags": "g",
+          "metavariableRegex": {
+            "CODE": "[^)]+"
+          }
+        },
+        {
+          "type": "pattern-not-inside",
+          "pattern": {
+            "type": "regex",
+            "value": "describe\\s*\\([\\s\\S]*?\\)\\s*(?:=>\\s*)?\\{[\\s\\S]*?\\}",
+            "flags": "g"
+          }
+        },
+        {
+          "type": "pattern-not",
+          "pattern": {
+            "type": "regex",
+            "value": "eval\\s*\\(\\s*['\"][^'\"]*['\"]\\s*\\)",
+            "flags": "g"
+          }
+        }
+      ],
+      "message": "Dynamic eval() outside a describe() test suite",
+      "recommendation": "Avoid eval in production code; confine experiments to tests",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-tautology-eq",
+      "cweId": "CWE-570",
+      "name": "Tautological equality comparison",
+      "category": "business_logic",
+      "severity": "low",
+      "languages": ["javascript", "typescript"],
+      "patterns": [
+        {
+          "type": "pattern-either",
+          "patterns": [
+            {
+              "type": "pattern",
+              "value": "$X === $X",
+              "flags": "g",
+              "metavariableRegex": {
+                "X": "[\\w$.]+"
+              }
+            },
+            {
+              "type": "pattern",
+              "value": "$X == $X",
+              "flags": "g",
+              "metavariableRegex": {
+                "X": "[\\w$.]+"
+              }
+            }
+          ]
+        }
+      ],
+      "message": "Expression always compares a value to itself",
+      "recommendation": "Replace with a meaningful comparison or remove the dead branch",
+      "owaspCategory": "A04:2021 - Insecure Design"
+    },
+    {
+      "id": "js-eval-req-arg",
+      "cweId": "CWE-95",
+      "name": "eval with request-sourced argument",
+      "category": "injection",
+      "severity": "critical",
+      "languages": ["javascript", "typescript"],
+      "patterns": [
+        {
+          "type": "pattern",
+          "value": "eval($CODE)",
+          "flags": "g",
+          "metavariableRegex": {
+            "CODE": "[^)]+"
+          }
+        },
+        {
+          "type": "metavariable-pattern",
+          "metavariable": "$CODE",
+          "pattern": {
+            "type": "regex",
+            "value": "req\\.",
+            "flags": "i"
+          }
+        },
+        {
+          "type": "pattern-not",
+          "pattern": {
+            "type": "regex",
+            "value": "eval\\s*\\(\\s*['\"][^'\"]*['\"]\\s*\\)",
+            "flags": "g"
+          }
+        }
+      ],
+      "message": "eval() argument appears request-sourced — likely code injection",
+      "recommendation": "Never eval request input; validate and use a safe parser",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-weak-rsa-bits",
+      "cweId": "CWE-326",
+      "name": "RSA modulusLength below 2048",
+      "category": "cryptography",
+      "severity": "high",
+      "languages": ["javascript", "typescript"],
+      "patterns": [
+        {
+          "type": "pattern",
+          "value": "modulusLength: $BITS",
+          "flags": "g",
+          "metavariableRegex": {
+            "BITS": "\\d+"
+          }
+        },
+        {
+          "type": "metavariable-comparison",
+          "metavariable": "$BITS",
+          "comparison": "$BITS < 2048"
+        }
+      ],
+      "message": "RSA key modulusLength is below 2048 bits",
+      "recommendation": "Use modulusLength of at least 2048 (prefer 3072+)",
+      "owaspCategory": "A02:2021 - Cryptographic Failures"
+    },
+    {
+      "id": "py-os-system",
+      "cweId": "CWE-78",
+      "name": "os.system with interpolated command",
+      "category": "injection",
+      "severity": "critical",
+      "languages": ["python"],
+      "patterns": [
+        {
+          "type": "pattern",
+          "value": "os.system($CMD)",
+          "flags": "g",
+          "metavariableRegex": {
+            "CMD": "[^)]+"
+          }
+        }
+      ],
+      "message": "os.system with dynamic command",
+      "recommendation": "Use subprocess.run with a list argv and shell=False",
+      "owaspCategory": "A03:2021 - Injection"
+    }
+  ]
+}

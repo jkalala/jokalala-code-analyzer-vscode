@@ -2,7 +2,7 @@
   "name": "jokalala-code-analysis",
   "displayName": "Jokalala Code Analyzer",
   "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 10+ languages.",
-  "version": "2.4.1",
+  "version": "2.4.2",
   "publisher": "jokalala",
   "author": {
     "name": "Jokalala Team",
@@ -511,7 +511,7 @@
             "full"
           ],
           "default": "full",
-          "description": "Analysis mode: quick (static only), deep (LLM only), full (both)"
+          "description": "Analysis mode: quick (local Tier-1), deep/full (hybrid local + cloud Stage-1)"
         },
         "jokalala.autoAnalyze": {
           "type": "boolean",
@@ -581,6 +581,25 @@
             "official"
           ],
           "description": "List of trusted plugin publishers (plugins from trusted publishers load without confirmation)"
+        },
+        "jokalala.analysisTier": {
+          "type": "string",
+          "enum": [
+            "local",
+            "hybrid",
+            "cloud"
+          ],
+          "default": "hybrid",
+          "description": "Execution tier: local, hybrid, or cloud"
+        },
+        "jokalala.localPackProfile": {
+          "type": "string",
+          "enum": [
+            "precision",
+            "full"
+          ],
+          "default": "precision",
+          "description": "Local Tier-1 packs: precision (low noise) or full"
         }
       }
     },
@@ -631,26 +650,37 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "pnpm run compile",
-    "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile",
-    "test": "node ./out/test/runTest.js",
+    "test": "npm run test:smoke",
     "test:unit": "pnpm run compile && mocha",
     "test:unit:watch": "mocha --watch",
     "test:coverage": "c8 mocha",
-    "package": "vsce package",
-    "publish": "vsce publish"
+    "publish": "vsce publish",
+    "vscode:prepublish": "npm run compile",
+    "compile": "npm run compile:tsc && npm run compile:bundle",
+    "compile:tsc": "tsc -p ./ --noEmit",
+    "compile:bundle": "node ./scripts/esbuild.js",
+    "typecheck": "tsc -p ./ --noEmit",
+    "package": "npm run compile && vsce package --no-dependencies",
+    "check:vsix-size": "node ./scripts/check-vsix-size.js",
+    "test:smoke": "node -e \"require('fs').accessSync('dist/extension.js'); console.log('bundle ok')\""
   },
   "devDependencies": {
+    "@types/babel__traverse": "^7.28.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.3.8",
+    "esbuild": "^0.23.0",
     "typescript": "^5.3.3",
     "vsce": "^2.15.0"
   },
   "dependencies": {
+    "@babel/parser": "^7.24.7",
+    "@babel/traverse": "^7.24.7",
+    "@babel/types": "^7.24.7",
+    "@jokalala/analyzer-rule-packs": "file:./packages/analyzer-rule-packs",
     "axios": "^1.6.5"
   }
 }

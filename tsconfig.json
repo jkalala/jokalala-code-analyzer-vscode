@@ -40,5 +40,5 @@
     "useDefineForClassFields": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", ".vscode-test", "dist"]
+  "exclude": ["node_modules", ".vscode-test", "dist", "src/test"]
 }

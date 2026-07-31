@@ -1,0 +1,151 @@
+{
+  "id": "jokalala.javascript",
+  "name": "Jokalala JavaScript/TypeScript Pack",
+  "version": "1.0.0",
+  "description": "JS/TS Tier-1 surface + AST seed rules aligned with cloud CWEs (XSS, SQLi, command injection)",
+  "author": "Jokalala",
+  "license": "MIT",
+  "rules": [
+    {
+      "id": "js-innerhtml-assignment",
+      "cweId": "CWE-79",
+      "name": "innerHTML assignment",
+      "category": "xss",
+      "severity": "high",
+      "languages": ["javascript", "typescript"],
+      "engine": "ast",
+      "astVisitor": "innerHTML",
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "\\.innerHTML\\s*=",
+          "flags": "g"
+        }
+      ],
+      "message": "Assigning to innerHTML can introduce XSS",
+      "recommendation": "Use textContent or sanitize HTML before assignment",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-dangerously-set-inner-html",
+      "cweId": "CWE-79",
+      "name": "React dangerouslySetInnerHTML",
+      "category": "xss",
+      "severity": "high",
+      "languages": ["javascript", "typescript"],
+      "engine": "ast",
+      "astVisitor": "dangerouslySetInnerHTML",
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "dangerouslySetInnerHTML",
+          "flags": "g"
+        }
+      ],
+      "message": "dangerouslySetInnerHTML can introduce XSS",
+      "recommendation": "Sanitize HTML or avoid raw HTML injection",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-eval-call",
+      "cweId": "CWE-95",
+      "name": "eval() call",
+      "category": "injection",
+      "severity": "critical",
+      "languages": ["javascript", "typescript"],
+      "engine": "ast",
+      "astVisitor": "eval",
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "\\beval\\s*\\(",
+          "flags": "g"
+        }
+      ],
+      "message": "eval() executes arbitrary code",
+      "recommendation": "Avoid eval; use JSON.parse or safer APIs",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-child-process-exec",
+      "cweId": "CWE-78",
+      "name": "child_process exec/execSync",
+      "category": "injection",
+      "severity": "critical",
+      "languages": ["javascript", "typescript"],
+      "engine": "ast",
+      "astVisitor": "childProcessExec",
+      "patterns": [
+        {
+          "type": "pattern-either",
+          "patterns": [
+            {
+              "type": "regex",
+              "value": "\\b(?:exec|execSync|spawn|spawnSync)\\s*\\(",
+              "flags": "g"
+            }
+          ]
+        }
+      ],
+      "message": "Shell command execution may allow command injection",
+      "recommendation": "Avoid shell:true; pass args as arrays; sanitize input",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-sql-string-concat",
+      "cweId": "CWE-89",
+      "name": "SQL-like string concatenation",
+      "category": "injection",
+      "severity": "high",
+      "languages": ["javascript", "typescript"],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?:SELECT|INSERT|UPDATE|DELETE)\\s+[^;]*['\"`]\\s*\\+|\\+\\s*['\"`][^'\"`]*(?:SELECT|INSERT|UPDATE|DELETE)",
+          "flags": "gi"
+        }
+      ],
+      "message": "SQL query built with string concatenation",
+      "recommendation": "Use parameterized queries or an ORM",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-document-write",
+      "cweId": "CWE-79",
+      "name": "document.write",
+      "category": "xss",
+      "severity": "medium",
+      "languages": ["javascript", "typescript"],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "document\\.write(?:ln)?\\s*\\(",
+          "flags": "g"
+        }
+      ],
+      "message": "document.write can introduce XSS",
+      "recommendation": "Use DOM APIs with textContent instead of document.write",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-new-function",
+      "cweId": "CWE-95",
+      "name": "new Function()",
+      "category": "injection",
+      "severity": "high",
+      "languages": ["javascript", "typescript"],
+      "engine": "ast",
+      "astVisitor": "newFunction",
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "new\\s+Function\\s*\\(",
+          "flags": "g"
+        }
+      ],
+      "message": "new Function() executes arbitrary code",
+      "recommendation": "Avoid dynamic Function constructors",
+      "owaspCategory": "A03:2021 - Injection"
+    }
+  ]
+}
