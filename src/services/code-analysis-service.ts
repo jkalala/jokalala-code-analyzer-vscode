@@ -500,7 +500,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
             analysisMode,
             context: {
               source: 'vscode-extension',
-              version: '2.4.3',
+              version: '2.4.4',
               requestId,
             },
           },

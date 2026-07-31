@@ -1,3 +1,9 @@
+## [2.4.4] - 2026-07-31
+
+### Fixed
+- Sign-in now stores a persistent `jkl_…` API key instead of the 15-minute web session token, fixing sessions expiring ~15 minutes after **Jokalala: Sign In**
+- Auth callback token-format check now accepts `jkl_…` keys (previously only accepted 3-segment JWTs, rejecting the new key with "unexpected format")
+
 ## [2.4.3] - 2026-07-31
 
 ### Added
