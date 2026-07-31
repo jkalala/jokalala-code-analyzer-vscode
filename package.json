@@ -2,7 +2,7 @@
   "name": "jokalala-code-analysis",
   "displayName": "Jokalala Code Analyzer",
   "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 10+ languages.",
-  "version": "2.4.2",
+  "version": "2.4.3",
   "publisher": "jokalala",
   "author": {
     "name": "Jokalala Team",
@@ -102,6 +102,18 @@
         "command": "jokalala.signOut",
         "title": "Jokalala: Sign Out",
         "icon": "$(sign-out)",
+        "category": "Jokalala"
+      },
+      {
+        "command": "jokalala.setApiKey",
+        "title": "Jokalala: Set API Key",
+        "icon": "$(key)",
+        "category": "Jokalala"
+      },
+      {
+        "command": "jokalala.clearApiKey",
+        "title": "Jokalala: Clear API Key",
+        "icon": "$(trash)",
         "category": "Jokalala"
       },
       {

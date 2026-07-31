@@ -146,6 +146,20 @@ export class AuthService {
     vscode.window.showInformationMessage('Signed out of Jokalala.')
   }
 
+  /**
+   * Called when the backend rejects our stored token as unauthorized (401).
+   * Clears the stale token so we stop sending a dead credential on every
+   * subsequent request, without showing the user-initiated "Signed out" toast.
+   */
+  async invalidateSession(): Promise<void> {
+    if (!this._authState.token) return
+    tryGetAudit()?.record(AuditEvent.AUTH_SESSION_EXPIRED, {}, this._authState.userId ?? undefined)
+    await this.context.secrets.delete(TOKEN_KEY)
+    await this.context.secrets.delete(USER_ID_KEY)
+    this._authState = { isAuthenticated: false, token: null, userId: null }
+    this._onDidChangeAuth.fire(this._authState)
+  }
+
   /** Returns auth headers for API requests; empty object if unauthenticated */
   getAuthHeaders(): Record<string, string> {
     if (!this._authState.token) return {}

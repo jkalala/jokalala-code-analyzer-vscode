@@ -13,6 +13,7 @@ const url_validator_1 = require("../utils/url-validator");
 const typed_errors_1 = require("../utils/typed-errors");
 const secrets_prescreener_1 = require("../utils/secrets-prescreener");
 const audit_service_1 = require("./audit-service");
+const offline_analyzer_1 = require("../core/offline-analyzer");
 // Lazily resolve audit service to avoid circular imports at module load time
 function tryGetAudit() {
     try {
@@ -25,7 +26,7 @@ function tryGetAudit() {
     }
 }
 class CodeAnalysisService {
-    constructor(configuration, logger) {
+    constructor(configuration, logger, authService) {
         Object.defineProperty(this, "configuration", {
             enumerable: true,
             configurable: true,
@@ -37,6 +38,12 @@ class CodeAnalysisService {
             configurable: true,
             writable: true,
             value: logger
+        });
+        Object.defineProperty(this, "authService", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: authService
         });
         Object.defineProperty(this, "requestQueue", {
             enumerable: true,
@@ -84,6 +91,24 @@ class CodeAnalysisService {
     }
     get settings() {
         return this.configuration.getSettings();
+    }
+    /**
+     * Prefer Sign-In JWT from AuthService; fall back to settings API key (jkl_…).
+     */
+    buildAuthHeaders() {
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+        const fromAuth = this.authService?.getAuthHeaders();
+        if (fromAuth?.Authorization) {
+            Object.assign(headers, fromAuth);
+            return headers;
+        }
+        const apiKey = this.settings.apiKey?.trim();
+        if (apiKey) {
+            headers.Authorization = `Bearer ${apiKey}`;
+        }
+        return headers;
     }
     /**
      * Generate a unique request ID
@@ -220,20 +245,166 @@ class CodeAnalysisService {
         });
     }
     /**
+     * Resolve effective tier from settings + analysis mode.
+     * quick → local; deep/full → respect analysisTier (default hybrid).
+     */
+    resolveAnalysisTier(analysisMode) {
+        const configured = this.settings
+            .analysisTier || 'hybrid';
+        if (analysisMode === 'quick')
+            return 'local';
+        if (configured === 'local' || configured === 'cloud' || configured === 'hybrid') {
+            return configured;
+        }
+        return 'hybrid';
+    }
+    issueDedupeKey(issue) {
+        const line = issue.line ??
+            issue.location?.startLine ??
+            0;
+        const cwe = (Array.isArray(issue.cwe) &&
+            issue.cwe?.[0]) ||
+            (issue.metadata && typeof issue.metadata.cweId === 'string'
+                ? String(issue.metadata.cweId)
+                : null) ||
+            issue.ruleId ||
+            issue.category ||
+            issue.id ||
+            issue.message;
+        return `${cwe}:${line}`;
+    }
+    mergeLocalAndCloud(local, cloud, requestId) {
+        const seen = new Set();
+        const merged = [];
+        for (const issue of local.prioritizedIssues || []) {
+            const key = this.issueDedupeKey(issue);
+            if (seen.has(key))
+                continue;
+            seen.add(key);
+            merged.push({
+                ...issue,
+                tags: [...(issue.tags || []), 'local-pack', 'tier-1'],
+            });
+        }
+        for (const issue of cloud.prioritizedIssues || []) {
+            const key = this.issueDedupeKey(issue);
+            if (seen.has(key))
+                continue;
+            seen.add(key);
+            merged.push({
+                ...issue,
+                tags: [...(issue.tags || []), 'cloud', 'tier-2'],
+            });
+        }
+        const countBy = (sev) => merged.filter(i => String(i.severity).toLowerCase() === sev).length;
+        return {
+            ...cloud,
+            prioritizedIssues: merged,
+            summary: {
+                totalIssues: merged.length,
+                criticalIssues: countBy('critical'),
+                highIssues: countBy('high'),
+                mediumIssues: countBy('medium'),
+                lowIssues: countBy('low'),
+                analysisTime: (local.summary?.analysisTime || 0) + (cloud.summary?.analysisTime || 0),
+            },
+            requestId,
+            metadata: {
+                ...(cloud.metadata || {}),
+                analysisTier: 'hybrid',
+            },
+        };
+    }
+    runOfflineAnalysis(code, language, requestId) {
+        const offline = (0, offline_analyzer_1.getOfflineAnalyzer)();
+        const profile = this.settings
+            .localPackProfile || 'precision';
+        const result = offline.analyze(code, language, { packProfile: profile });
+        const prioritizedIssues = result.issues.map(issue => ({
+            id: issue.id,
+            severity: String(issue.severity).toLowerCase(),
+            category: issue.category || issue.ruleId,
+            message: issue.message || issue.title || issue.description,
+            suggestion: issue.suggestion,
+            source: 'static',
+            codeSnippet: issue.codeSnippet,
+            line: issue.line,
+            column: issue.column,
+            location: {
+                startLine: issue.line,
+                endLine: issue.endLine ?? issue.line,
+                startColumn: issue.column,
+                endColumn: issue.endColumn,
+            },
+            tags: ['local-pack', 'tier-1'],
+            ruleId: issue.ruleId,
+            metadata: {
+                ...(issue.metadata || {}),
+                source: 'local-pack',
+                engineTier: 1,
+            },
+        }));
+        return {
+            prioritizedIssues,
+            recommendations: [
+                {
+                    title: 'Local Tier-1 analysis',
+                    description: 'Results from bundled deterministic rule packs (no cloud).',
+                    category: 'general',
+                },
+            ],
+            summary: {
+                totalIssues: result.summary.totalIssues,
+                criticalIssues: result.summary.criticalCount,
+                highIssues: result.summary.highCount,
+                mediumIssues: result.summary.mediumCount,
+                lowIssues: result.summary.lowCount,
+                analysisTime: result.summary.analysisTime,
+            },
+            requestId,
+            metadata: {
+                hasV2Report: false,
+                v2AnalyzerVersion: 'local-tier1',
+                rulesVersion: result.metadata.rulesVersion,
+            },
+        };
+    }
+    /**
      * Perform the actual analysis (internal method)
      */
     async performAnalysis(code, language, options, requestId) {
-        const { apiEndpoint, apiKey, requestTimeout } = this.settings;
+        const { apiEndpoint, requestTimeout } = this.settings;
         const analysisMode = options?.mode || this.settings.analysisMode;
         const timeout = options?.timeout || requestTimeout;
         const audit = tryGetAudit();
+        const tier = this.resolveAnalysisTier(analysisMode);
+        this.logger.info(`Analysis request queued`, {
+            requestId,
+            language,
+            mode: analysisMode,
+            tier,
+            codeLength: code.length,
+        });
+        if (tier === 'local') {
+            const local = this.runOfflineAnalysis(code, language, requestId);
+            audit?.record(audit_service_1.AuditEvent.ANALYSIS_COMPLETED, {
+                requestId,
+                language,
+                issueCount: local.prioritizedIssues?.length ?? 0,
+            });
+            return local;
+        }
+        const localResult = tier === 'hybrid'
+            ? this.runOfflineAnalysis(code, language, requestId)
+            : null;
         if (!apiEndpoint) {
+            if (localResult)
+                return localResult;
             throw new Error('API endpoint not configured. Please set jokalala.apiEndpoint in settings.');
         }
         // ── HTTPS enforcement ────────────────────────────────────────────────────
         (0, url_validator_1.assertHttpsUrl)(apiEndpoint, 'jokalala.apiEndpoint');
-        // ── Secrets pre-screening ─────────────────────────────────────────────────
-        // Scan the code for hardcoded secrets BEFORE sending to the API.
+        // ── Secrets pre-screening (cloud path only) ───────────────────────────────
         const screening = (0, secrets_prescreener_1.screenForSecrets)(code);
         if (screening.hasSecrets) {
             audit?.record(audit_service_1.AuditEvent.ANALYSIS_SECRETS_DETECTED, {
@@ -245,19 +416,18 @@ class CodeAnalysisService {
             const consent = await (0, secrets_prescreener_1.requestConsentForSecretsInCode)(screening.findings);
             if (!consent) {
                 audit?.record(audit_service_1.AuditEvent.ANALYSIS_CONSENT_DENIED, { requestId, language });
+                if (localResult)
+                    return localResult;
                 throw new Error('Analysis cancelled — remove hardcoded secrets from your code before sending for analysis.');
             }
         }
-        // ── Safe URL construction ─────────────────────────────────────────────────
         const fullUrl = (0, url_validator_1.safeJoinUrl)(apiEndpoint, 'analyze-enhanced');
-        this.logger.info(`Analysis request queued`, { requestId, language, mode: analysisMode, codeLength: code.length });
         audit?.record(audit_service_1.AuditEvent.ANALYSIS_REQUESTED, {
             requestId,
             language,
             mode: analysisMode,
             codeLength: code.length,
         });
-        // Create abort controller for this request
         const abortController = new AbortController();
         this.activeRequests.set(requestId, abortController);
         try {
@@ -267,26 +437,21 @@ class CodeAnalysisService {
                 analysisMode,
                 context: {
                     source: 'vscode-extension',
-                    version: '1.0.0',
+                    version: '2.4.3',
                     requestId,
                 },
             }, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-                },
+                headers: this.buildAuthHeaders(),
                 timeout,
                 signal: abortController.signal,
             }));
             if (response.data.success) {
                 const data = response.data.data;
-                // Transform recommendations if they're strings
                 if (Array.isArray(data.recommendations)) {
                     data.recommendations = data.recommendations.map((rec) => typeof rec === 'string'
                         ? { title: rec, description: rec, category: 'general' }
                         : rec);
                 }
-                // Validate the response
                 try {
                     (0, response_validator_1.validateAnalysisResult)(data);
                 }
@@ -295,13 +460,24 @@ class CodeAnalysisService {
                         this.logger.warn(`Response validation failed: ${error.message}. Sanitizing response.`);
                         const sanitized = (0, response_validator_1.sanitizeAnalysisResult)(data);
                         sanitized.requestId = requestId;
+                        if (localResult) {
+                            return this.mergeLocalAndCloud(localResult, sanitized, requestId);
+                        }
                         return sanitized;
                     }
                     throw error;
                 }
                 data.requestId = requestId;
-                audit?.record(audit_service_1.AuditEvent.ANALYSIS_COMPLETED, { requestId, language, issueCount: data.issues?.length ?? 0 });
-                return data;
+                audit?.record(audit_service_1.AuditEvent.ANALYSIS_COMPLETED, {
+                    requestId,
+                    language,
+                    issueCount: data.prioritizedIssues?.length ?? data.issues?.length ?? 0,
+                });
+                const cloud = data;
+                if (localResult) {
+                    return this.mergeLocalAndCloud(localResult, cloud, requestId);
+                }
+                return cloud;
             }
             else {
                 throw new Error(response.data.error?.message || 'Analysis failed');
@@ -314,22 +490,40 @@ class CodeAnalysisService {
                 requestId,
                 language,
                 errorCode: appError.code,
-                // errorMessage deliberately omitted from audit — may contain code snippets
             });
             if (axios_1.default.isCancel(e)) {
                 audit?.record(audit_service_1.AuditEvent.ANALYSIS_CANCELLED, { requestId });
                 throw new Error('Analysis request was cancelled');
             }
             const axiosError = e;
+            // A rejected/expired token is never worth retrying with the same
+            // credential, so clear it immediately regardless of the fallback path.
+            if (axiosError.response?.status === 401) {
+                await this.authService?.invalidateSession();
+            }
+            // Fail open to local Tier-1 when hybrid/network fails
+            if (localResult) {
+                this.logger.warn('Cloud analysis failed; returning local Tier-1 findings');
+                return localResult;
+            }
             if (axiosError.response) {
                 const status = axiosError.response.status;
                 if (status === 404) {
                     throw new Error(`Analysis endpoint not found (404). Check jokalala.apiEndpoint in your settings.`);
                 }
+                if (status === 401) {
+                    throw new Error('Authentication failed (401). Your Jokalala session has expired or is invalid — run "Jokalala: Sign In" to reconnect, or check jokalala.apiKey in settings.');
+                }
                 throw new Error(`API Error (${status}): ${axiosError.response.data?.error?.message ?? (0, typed_errors_1.getErrorMessage)(e)}`);
             }
             else if (axiosError.request) {
-                throw new Error(`Cannot connect to the Jokalala API. Check your jokalala.apiEndpoint setting and network connection.`);
+                // Try offline as last resort
+                try {
+                    return this.runOfflineAnalysis(code, language, requestId);
+                }
+                catch {
+                    throw new Error(`Cannot connect to the Jokalala API. Check your jokalala.apiEndpoint setting and network connection.`);
+                }
             }
             throw appError;
         }
@@ -341,7 +535,7 @@ class CodeAnalysisService {
      * Perform project analysis (internal method)
      */
     async performProjectAnalysis(files, options, requestId) {
-        const { apiEndpoint, apiKey, requestTimeout } = this.settings;
+        const { apiEndpoint, requestTimeout } = this.settings;
         const timeout = options?.timeout || Math.max(requestTimeout, 300000);
         if (!apiEndpoint) {
             throw new Error('API endpoint not configured');
@@ -363,10 +557,7 @@ class CodeAnalysisService {
                     requestId,
                 },
             }, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-                },
+                headers: this.buildAuthHeaders(),
                 timeout,
                 signal: abortController.signal,
             }));
@@ -417,6 +608,10 @@ class CodeAnalysisService {
                 if (status === 404) {
                     throw new Error('API endpoint not found (404). Start the Jokalala backend: pnpm dev');
                 }
+                if (status === 401) {
+                    await this.authService?.invalidateSession();
+                    throw new Error('Authentication failed (401). Your Jokalala session has expired or is invalid — run "Jokalala: Sign In" to reconnect, or check jokalala.apiKey in settings.');
+                }
                 throw new Error(`API Error (${status}): ${error.response.data?.error?.message || error.message}`);
             }
             else if (error.request) {
@@ -463,16 +658,13 @@ class CodeAnalysisService {
         });
     }
     async clearCache() {
-        const { apiEndpoint, apiKey } = this.settings;
+        const { apiEndpoint } = this.settings;
         if (!apiEndpoint) {
             throw new Error('API endpoint not configured');
         }
         try {
             await axios_1.default.delete(`${apiEndpoint}/cache`, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-                },
+                headers: this.buildAuthHeaders(),
             });
         }
         catch (error) {
@@ -481,7 +673,7 @@ class CodeAnalysisService {
         }
     }
     async testConnection() {
-        const { apiEndpoint, apiKey, requestTimeout } = this.settings;
+        const { apiEndpoint, requestTimeout } = this.settings;
         if (!apiEndpoint) {
             return {
                 healthy: false,
@@ -492,10 +684,7 @@ class CodeAnalysisService {
         const startTime = Date.now();
         try {
             const response = await axios_1.default.get(healthEndpoint, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-                },
+                headers: this.buildAuthHeaders(),
                 timeout: Math.min(requestTimeout, 15000),
             });
             const responseTime = Date.now() - startTime;

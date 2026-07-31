@@ -29,8 +29,10 @@ import {
   requestConsentForSecretsInCode,
 } from '../utils/secrets-prescreener'
 import { AuditEvent } from './audit-service'
+import { AuthService } from './auth-service'
 import { ConfigurationService } from './configuration-service'
 import { Logger } from './logger'
+import { SecurityService } from './security-service'
 import { getOfflineAnalyzer } from '../core/offline-analyzer'
 import type { Issue } from '../interfaces/code-analysis-service.interface'
 
@@ -58,7 +60,9 @@ export class CodeAnalysisService implements ICodeAnalysisService {
 
   constructor(
     private readonly configuration: ConfigurationService,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly authService?: AuthService,
+    private readonly securityService?: SecurityService
   ) {
     this.requestQueue = new PriorityQueue<QueuedRequest>()
     this.activeRequests = new Map()
@@ -68,6 +72,28 @@ export class CodeAnalysisService implements ICodeAnalysisService {
 
   private get settings(): ExtensionSettings {
     return this.configuration.getSettings()
+  }
+
+  /**
+   * Prefer Sign-In JWT from AuthService; fall back to an API key (jkl_…),
+   * checked in SecretStorage first, then the (deprecated) plaintext setting.
+   */
+  private async buildAuthHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    const fromAuth = this.authService?.getAuthHeaders()
+    if (fromAuth?.Authorization) {
+      Object.assign(headers, fromAuth)
+      return headers
+    }
+    const apiKey =
+      (await this.securityService?.getApiKeyWithFallback()) ??
+      this.settings.apiKey?.trim()
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`
+    }
+    return headers
   }
 
   /**
@@ -393,7 +419,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
     options: AnalysisOptions | undefined,
     requestId: string
   ): Promise<AnalysisResult> {
-    const { apiEndpoint, apiKey, requestTimeout } = this.settings
+    const { apiEndpoint, requestTimeout } = this.settings
     const analysisMode = options?.mode || this.settings.analysisMode
     const timeout = options?.timeout || requestTimeout
     const audit = tryGetAudit()
@@ -465,7 +491,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
     this.activeRequests.set(requestId, abortController)
 
     try {
-      const response = await this.circuitBreaker.execute(apiEndpoint, () =>
+      const response = await this.circuitBreaker.execute(apiEndpoint, async () =>
         axios.post(
           fullUrl,
           {
@@ -474,15 +500,12 @@ export class CodeAnalysisService implements ICodeAnalysisService {
             analysisMode,
             context: {
               source: 'vscode-extension',
-              version: '2.4.2',
+              version: '2.4.3',
               requestId,
             },
           },
           {
-            headers: {
-              'Content-Type': 'application/json',
-              ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-            },
+            headers: await this.buildAuthHeaders(),
             timeout,
             signal: abortController.signal,
           }
@@ -543,21 +566,33 @@ export class CodeAnalysisService implements ICodeAnalysisService {
         throw new Error('Analysis request was cancelled')
       }
 
+      const axiosError = e as {
+        response?: { status: number; data?: { error?: { message?: string } } }
+        request?: unknown
+      }
+
+      // A rejected/expired token is never worth retrying with the same
+      // credential, so clear it immediately regardless of the fallback path.
+      if (axiosError.response?.status === 401) {
+        await this.authService?.invalidateSession()
+      }
+
       // Fail open to local Tier-1 when hybrid/network fails
       if (localResult) {
         this.logger.warn('Cloud analysis failed; returning local Tier-1 findings')
         return localResult
       }
 
-      const axiosError = e as {
-        response?: { status: number; data?: { error?: { message?: string } } }
-        request?: unknown
-      }
       if (axiosError.response) {
         const status = axiosError.response.status
         if (status === 404) {
           throw new Error(
             `Analysis endpoint not found (404). Check jokalala.apiEndpoint in your settings.`
+          )
+        }
+        if (status === 401) {
+          throw new Error(
+            'Authentication failed (401). Your Jokalala session has expired or is invalid — run "Jokalala: Sign In" to reconnect, or check jokalala.apiKey in settings.'
           )
         }
         throw new Error(
@@ -588,7 +623,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
     options: ProjectAnalysisOptions | undefined,
     requestId: string
   ): Promise<ProjectAnalysisResult> {
-    const { apiEndpoint, apiKey, requestTimeout } = this.settings
+    const { apiEndpoint, requestTimeout } = this.settings
     const timeout = options?.timeout || Math.max(requestTimeout, 300000)
 
     if (!apiEndpoint) {
@@ -601,7 +636,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
 
     try {
       // Execute request with circuit breaker protection
-      const response = await this.circuitBreaker.execute(apiEndpoint, () =>
+      const response = await this.circuitBreaker.execute(apiEndpoint, async () =>
         axios.post(
           `${apiEndpoint}/analyze-project`,
           {
@@ -617,10 +652,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
             },
           },
           {
-            headers: {
-              'Content-Type': 'application/json',
-              ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-            },
+            headers: await this.buildAuthHeaders(),
             timeout,
             signal: abortController.signal,
           }
@@ -685,6 +717,12 @@ export class CodeAnalysisService implements ICodeAnalysisService {
             'API endpoint not found (404). Start the Jokalala backend: pnpm dev'
           )
         }
+        if (status === 401) {
+          await this.authService?.invalidateSession()
+          throw new Error(
+            'Authentication failed (401). Your Jokalala session has expired or is invalid — run "Jokalala: Sign In" to reconnect, or check jokalala.apiKey in settings.'
+          )
+        }
         throw new Error(
           `API Error (${status}): ${error.response.data?.error?.message || error.message}`
         )
@@ -740,7 +778,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
   }
 
   async clearCache(): Promise<void> {
-    const { apiEndpoint, apiKey } = this.settings
+    const { apiEndpoint } = this.settings
 
     if (!apiEndpoint) {
       throw new Error('API endpoint not configured')
@@ -748,10 +786,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
 
     try {
       await axios.delete(`${apiEndpoint}/cache`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-        },
+        headers: await this.buildAuthHeaders(),
       })
     } catch (error: any) {
       this.logger.error('Failed to clear cache', error)
@@ -760,7 +795,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
   }
 
   async testConnection(): Promise<HealthCheckResult> {
-    const { apiEndpoint, apiKey, requestTimeout } = this.settings
+    const { apiEndpoint, requestTimeout } = this.settings
 
     if (!apiEndpoint) {
       return {
@@ -774,10 +809,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
 
     try {
       const response = await axios.get(healthEndpoint, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
-        },
+        headers: await this.buildAuthHeaders(),
         timeout: Math.min(requestTimeout, 15_000),
       })
 

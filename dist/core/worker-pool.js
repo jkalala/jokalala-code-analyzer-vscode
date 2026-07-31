@@ -68,7 +68,11 @@ var TaskType;
  */
 const DEFAULT_CONFIG = {
     minWorkers: 2,
-    maxWorkers: Math.max(4, Math.floor((typeof navigator !== 'undefined' ? navigator.hardwareConcurrency : 4) * 0.75)),
+    maxWorkers: Math.max(4, Math.floor(((typeof globalThis.navigator !==
+        'undefined'
+        ? globalThis.navigator
+            ?.hardwareConcurrency
+        : undefined) || 4) * 0.75)),
     taskTimeout: 60000,
     idleTimeout: 30000,
     maxQueueSize: 1000,

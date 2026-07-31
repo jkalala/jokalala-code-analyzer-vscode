@@ -25,6 +25,7 @@ import { debounce } from './utils/debounce'
 import { AuthService } from './services/auth-service'
 import { CodeAnalysisService } from './services/code-analysis-service'
 import { ConfigurationService } from './services/configuration-service'
+import { SecurityService } from './services/security-service'
 import { DiagnosticsManager } from './services/diagnostics-manager'
 import { Logger } from './services/logger'
 import { CVEService, CVEMatch, CVEFix } from './services/cve-service'
@@ -37,6 +38,7 @@ import { falsePositiveDetector } from './utils/false-positive-detector'
 import { intelligencePrioritizer } from './utils/intelligence-prioritizer'
 
 let authService: AuthService
+let securityService: SecurityService
 let diagnosticsManager: DiagnosticsManager
 let codeAnalysisService: CodeAnalysisService
 let configurationService: ConfigurationService
@@ -82,9 +84,49 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.commands.registerCommand('jokalala.signOut', () => authService.signOut()),
     )
 
+    securityService = new SecurityService(context)
+
+    // Register API key commands (SecretStorage-backed; supersedes the
+    // deprecated plaintext jokalala.apiKey setting)
+    context.subscriptions.push(
+      vscode.commands.registerCommand('jokalala.setApiKey', async () => {
+        const key = await vscode.window.showInputBox({
+          prompt: 'Enter your Jokalala API key',
+          placeHolder: 'jkl_...',
+          password: true,
+          ignoreFocusOut: true,
+          validateInput: value =>
+            value && value.trim().length > 0
+              ? undefined
+              : 'API key cannot be empty',
+        })
+        if (!key) return
+
+        try {
+          await securityService.storeApiKey(key)
+          vscode.window.showInformationMessage(
+            'Jokalala API key saved securely.'
+          )
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            `Failed to save API key: ${error instanceof Error ? error.message : String(error)}`
+          )
+        }
+      }),
+      vscode.commands.registerCommand('jokalala.clearApiKey', async () => {
+        await securityService.deleteApiKey()
+        vscode.window.showInformationMessage('Jokalala API key cleared.')
+      })
+    )
+
     configurationService = new ConfigurationService()
     diagnosticsManager = new DiagnosticsManager()
-    codeAnalysisService = new CodeAnalysisService(configurationService, logger)
+    codeAnalysisService = new CodeAnalysisService(
+      configurationService,
+      logger,
+      authService,
+      securityService
+    )
     issuesTreeProvider = new IssuesTreeProvider()
     recommendationsTreeProvider = new RecommendationsTreeProvider()
     metricsTreeProvider = new MetricsTreeProvider()
@@ -99,6 +141,9 @@ export async function activate(context: vscode.ExtensionContext) {
     pluginsTreeProvider = new PluginsTreeProvider()
 
     await ensurePersistentIdentifiers(context)
+
+    // Offer to migrate a legacy plaintext jokalala.apiKey setting to SecretStorage
+    await securityService.migrateApiKeyFromSettings()
 
     // Initialize user feedback service
     userFeedbackService.initialize(context)
@@ -1034,6 +1079,24 @@ export async function activate(context: vscode.ExtensionContext) {
   vscode.window.showInformationMessage('Jokalala Code Analysis is ready!')
 }
 
+function showAnalysisFailure(prefix: string, error: unknown): void {
+  const message =
+    (error as { message?: string })?.message ||
+    (error as { toString?: () => string })?.toString?.() ||
+    'Unknown error'
+  if (message.includes('Authentication failed (401)')) {
+    vscode.window
+      .showErrorMessage(`${prefix}: ${message}`, 'Sign In')
+      .then(choice => {
+        if (choice === 'Sign In') {
+          vscode.commands.executeCommand('jokalala.signIn')
+        }
+      })
+  } else {
+    vscode.window.showErrorMessage(`${prefix}: ${message}`)
+  }
+}
+
 async function analyzeCurrentFile() {
   const editor = vscode.window.activeTextEditor
   if (!editor) {
@@ -1076,9 +1139,7 @@ async function analyzeSelection() {
         handleAnalysisSuccess(result, editor.document, settings)
       } catch (error: any) {
         logger.error('Selection analysis error', error)
-        const errorMessage =
-          error?.message || error?.toString() || 'Unknown error'
-        vscode.window.showErrorMessage(`Analysis failed: ${errorMessage}`)
+        showAnalysisFailure('Analysis failed', error)
       }
     }
   )
@@ -1127,9 +1188,7 @@ async function analyzeDocument(
         handleAnalysisSuccess(result, document, settings)
       } catch (error: any) {
         logger.error('Analysis error', error)
-        const errorMessage =
-          error?.message || error?.toString() || 'Unknown error'
-        vscode.window.showErrorMessage(`Analysis failed: ${errorMessage}`)
+        showAnalysisFailure('Analysis failed', error)
       }
     }
   )
@@ -1147,6 +1206,25 @@ async function analyzeProject() {
   }
 
   const settings = configurationService.getSettings()
+
+  // Project analysis always hits the cloud service (there is no local
+  // Tier-1 fallback for whole-project scans), so an unauthenticated user
+  // would otherwise send a request that is guaranteed to 401. Catch that
+  // up front with an actionable prompt instead of a network round trip.
+  const hasApiKey = Boolean(
+    (await securityService.getApiKeyWithFallback())?.trim()
+  )
+  if (!authService.isAuthenticated && !hasApiKey) {
+    const choice = await vscode.window.showWarningMessage(
+      'Project analysis requires signing in to Jokalala (or setting an API key).',
+      'Sign In'
+    )
+    if (choice === 'Sign In') {
+      await authService.signIn()
+    }
+    return
+  }
+
   const resetStatusBar = enterAnalyzingState('Analyzing project files...')
 
   await vscode.window.withProgress(
@@ -1307,9 +1385,7 @@ async function analyzeProject() {
         }
 
         logger.error('Project analysis failed', error)
-        vscode.window.showErrorMessage(
-          `Project analysis failed: ${error?.message || error}`
-        )
+        showAnalysisFailure('Project analysis failed', error)
       }
     }
   )

@@ -1,3 +1,13 @@
+## [2.4.3] - 2026-07-31
+
+### Added
+- `Jokalala: Set API Key` / `Jokalala: Clear API Key` commands, storing the key in VS Code SecretStorage (the setting's deprecation notice referenced this command, but it never existed)
+- One-time prompt to migrate an existing plaintext `jokalala.apiKey` setting into SecretStorage
+
+### Fixed
+- Project / cloud analysis now sends the Sign-In JWT (not only a settings API key), fixing 401 after **Jokalala: Sign In**
+- API key fallback (used when not signed in) now checks SecretStorage before the plaintext setting, so keys saved via `Jokalala: Set API Key` are actually honored
+
 ## [2.4.2] - 2026-07-31
 
 ### Added
