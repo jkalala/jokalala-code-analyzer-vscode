@@ -1134,7 +1134,9 @@ async function analyzeSelection() {
     async () => {
       try {
         const language = editor.document.languageId
-        const result = await codeAnalysisService.analyzeCode(code, language)
+        const result = await codeAnalysisService.analyzeCode(code, language, {
+          filePath: editor.document.fileName,
+        })
 
         handleAnalysisSuccess(result, editor.document, settings)
       } catch (error: any) {
@@ -1178,6 +1180,7 @@ async function analyzeDocument(
         const language = document.languageId
         const result = await codeAnalysisService.analyzeCode(code, language, {
           mode: options?.mode || settings.analysisMode,
+          filePath: document.fileName,
         })
 
         logger.info('Analysis result received', {
@@ -1196,6 +1199,40 @@ async function analyzeDocument(
   resetStatusBar()
 }
 
+const SEVERITY_RANK: Record<string, number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+  info: 0,
+}
+
+/**
+ * Pick the highest-value files (by worst local severity, then issue count)
+ * up to `maxFiles` — used to bound cloud enrichment to a worthwhile subset
+ * instead of either sending everything or an arbitrary prefix.
+ */
+function selectFilesForCloudEnrichment(
+  files: { path: string; content: string; language: string }[],
+  localFileResults: FileAnalysisResult[],
+  maxFiles: number
+): { path: string; content: string; language: string }[] {
+  const scored = localFileResults
+    .map(fr => ({
+      path: fr.filePath,
+      score:
+        fr.issues.reduce((max, i) => Math.max(max, SEVERITY_RANK[i.severity] ?? 0), 0) *
+          1000 +
+        fr.issues.length,
+    }))
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxFiles)
+
+  const topPaths = new Set(scored.map(s => s.path))
+  return files.filter(f => topPaths.has(f.path))
+}
+
 async function analyzeProject() {
   const folders = vscode.workspace.workspaceFolders
   if (!folders || folders.length === 0) {
@@ -1207,23 +1244,8 @@ async function analyzeProject() {
 
   const settings = configurationService.getSettings()
 
-  // Project analysis always hits the cloud service (there is no local
-  // Tier-1 fallback for whole-project scans), so an unauthenticated user
-  // would otherwise send a request that is guaranteed to 401. Catch that
-  // up front with an actionable prompt instead of a network round trip.
-  const hasApiKey = Boolean(
-    (await securityService.getApiKeyWithFallback())?.trim()
-  )
-  if (!authService.isAuthenticated && !hasApiKey) {
-    const choice = await vscode.window.showWarningMessage(
-      'Project analysis requires signing in to Jokalala (or setting an API key).',
-      'Sign In'
-    )
-    if (choice === 'Sign In') {
-      await authService.signIn()
-    }
-    return
-  }
+  // Local scanning never requires cloud/auth — only the optional cloud
+  // enrichment pass below does, and that's checked just before it's used.
 
   const resetStatusBar = enterAnalyzingState('Analyzing project files...')
 
@@ -1237,16 +1259,22 @@ async function analyzeProject() {
       try {
         const includeGlob = '**/*.{ts,tsx,js,jsx,py,go,java,rb,cs,php}'
         const excludeGlob =
-          '{**/node_modules/**,**/.git/**,**/dist/**,**/build/**}'
+          '{**/node_modules/**,**/.git/**,**/dist/**,**/build/**,**/vendor/**,**/target/**,**/.next/**,**/coverage/**}'
 
         progress.report({ message: 'Collecting files...' })
+        const ceiling = settings.maxProjectFiles
+        // Fetch one more than the ceiling so a truncation can be detected
+        // and reported — VS Code's findFiles maxResults silently caps
+        // results otherwise, with no signal that more files exist.
         const candidateUris = await vscode.workspace.findFiles(
           includeGlob,
           excludeGlob,
-          settings.maxProjectFiles * 2
+          ceiling + 1
         )
+        const hitCeiling = candidateUris.length > ceiling
+        const uris = hitCeiling ? candidateUris.slice(0, ceiling) : candidateUris
 
-        if (candidateUris.length === 0) {
+        if (uris.length === 0) {
           vscode.window.showWarningMessage(
             'No analyzable project files were found.'
           )
@@ -1261,12 +1289,13 @@ async function analyzeProject() {
           logger.warn('Project analysis cancelled by user')
         })
 
-        for (const uri of candidateUris) {
+        for (let i = 0; i < uris.length; i++) {
           if (token.isCancellationRequested) {
             vscode.window.showInformationMessage('Project analysis cancelled.')
             return
           }
 
+          const uri = uris[i]!
           const document = await vscode.workspace.openTextDocument(uri)
           const content = document.getText()
 
@@ -1281,8 +1310,9 @@ async function analyzeProject() {
             language: document.languageId,
           })
 
-          if (files.length >= settings.maxProjectFiles) {
-            break
+          if ((i + 1) % 200 === 0) {
+            progress.report({ message: `Reading files... (${i + 1}/${uris.length})` })
+            await new Promise<void>(resolve => setImmediate(resolve))
           }
         }
 
@@ -1301,73 +1331,101 @@ async function analyzeProject() {
           )
         }
 
-        progress.report({
-          message: `Sending ${files.length} files to analysis service...`,
-        })
-        const result = await codeAnalysisService.analyzeProject(files)
-        const normalizedIssues = normalizeIssues(result.prioritizedIssues || [])
-
-        // Create file-grouped results for enhanced UI
-        const fileResultsMap = new Map<string, FileAnalysisResult>()
-
-        // Initialize with all analyzed files (even those with no issues)
-        files.forEach(file => {
-          const absolutePath = path.join(folders[0]!.uri.fsPath, file.path)
-          fileResultsMap.set(file.path, {
-            filePath: absolutePath,
-            issues: [],
-            language: file.language,
-          })
-        })
-
-        // Group normalized issues by file path
-        normalizedIssues.forEach(issue => {
-          // Try to find which file this issue belongs to
-          const issueFilePath = issue.filePath || issue.location?.filePath
-          if (issueFilePath) {
-            const relativePath = vscode.workspace.asRelativePath(issueFilePath)
-            const fileResult = fileResultsMap.get(relativePath)
-            if (fileResult) {
-              fileResult.issues.push({
-                ...issue,
-                filePath: fileResult.filePath,
-              })
-            } else {
-              // Create new entry for files not in our original list
-              const absolutePath = path.isAbsolute(issueFilePath)
-                ? issueFilePath
-                : path.join(folders[0]!.uri.fsPath, issueFilePath)
-              fileResultsMap.set(relativePath, {
-                filePath: absolutePath,
-                issues: [
-                  {
-                    ...issue,
-                    filePath: absolutePath,
-                  },
-                ],
-              })
-            }
-          }
-        })
-
-        // Calculate scores for each file
-        const fileResults: FileAnalysisResult[] = Array.from(
-          fileResultsMap.values()
-        ).map(fr => ({
-          ...fr,
-          score: calculateFileScore(fr.issues),
-        }))
-
-        // Mirror findings into the editor/Problems panel, not just the
-        // Jokalala sidebar — project scans previously only updated the
-        // custom tree views, so results were invisible to anyone checking
-        // squiggles or Problems instead of the sidebar.
-        for (const fileResult of fileResults) {
-          diagnosticsManager.updateDiagnosticsImmediate(
-            vscode.Uri.file(fileResult.filePath),
-            fileResult.issues
+        if (hitCeiling) {
+          vscode.window.showWarningMessage(
+            `Project analysis stopped at the ${ceiling}-file safety ceiling (jokalala.maxProjectFiles) — more matching files exist. Raise the setting to scan everything.`
           )
         }
+
+        // Local Tier-1 scan — no cloud, no auth, no cap beyond the ceiling
+        // already applied above. This is the default, always-on pass.
+        progress.report({ message: `Analyzing ${files.length} files locally...` })
+        const localResult = await codeAnalysisService.analyzeProjectLocally(
+          files,
+          token,
+          (done, total) => {
+            if (done % 200 === 0 || done === total) {
+              progress.report({ message: `Local analysis: ${done}/${total} files` })
+            }
+          }
+        )
+
+        if (token.isCancellationRequested) {
+          vscode.window.showInformationMessage('Project analysis cancelled.')
+          resetStatusBar()
+          return
+        }
+
+        let finalResult = localResult
+
+        // Optional, bounded cloud enrichment on top of the local pass.
+        if (settings.cloudEnrichmentEnabled) {
+          const hasApiKey = Boolean(
+            (await securityService.getApiKeyWithFallback())?.trim()
+          )
+          if (!authService.isAuthenticated && !hasApiKey) {
+            vscode.window.showWarningMessage(
+              'Cloud enrichment is enabled but you are not signed in — showing local-only results. Run "Jokalala: Sign In" to enable it.'
+            )
+          } else {
+            const cloudFiles = selectFilesForCloudEnrichment(
+              files,
+              localResult.fileResults ?? [],
+              settings.cloudEnrichmentMaxFiles ?? 200
+            )
+
+            if (cloudFiles.length > 0) {
+              progress.report({
+                message: `Enriching ${cloudFiles.length} highest-risk file(s) via cloud...`,
+              })
+              try {
+                const cloudResult = await codeAnalysisService.analyzeProject(
+                  cloudFiles,
+                  undefined,
+                  token
+                )
+                finalResult = codeAnalysisService.mergeProjectResults(
+                  localResult,
+                  cloudResult,
+                  localResult.requestId ?? ''
+                )
+              } catch (cloudError: any) {
+                logger.warn('Cloud enrichment failed; showing local-only results', cloudError)
+                vscode.window.showWarningMessage(
+                  `Cloud enrichment failed (${cloudError?.message ?? 'unknown error'}) — showing local-only results.`
+                )
+              }
+            }
+          }
+        }
+
+        const normalizedIssues = normalizeIssues(finalResult.prioritizedIssues || [])
+
+        // Build UI-facing file results (absolute paths) directly from the
+        // already file-grouped result — analyzeProjectLocally/mergeProjectResults
+        // both return fileResults, unlike the old cloud-only response shape
+        // that required re-grouping a flat issue list here.
+        const fileResults: FileAnalysisResult[] = (finalResult.fileResults ?? []).map(
+          fr => {
+            const absolutePath = path.isAbsolute(fr.filePath)
+              ? fr.filePath
+              : path.join(folders[0]!.uri.fsPath, fr.filePath)
+            const issues = fr.issues.map(issue => ({ ...issue, filePath: absolutePath }))
+            return {
+              filePath: absolutePath,
+              issues,
+              language: fr.language,
+              score: calculateFileScore(issues),
+            }
+          }
+        )
+
+        // Mirror findings into the editor/Problems panel, not just the
+        // Jokalala sidebar — one batched call instead of one per file, so
+        // this doesn't jank the extension host on large scans.
+        diagnosticsManager.updateDiagnosticsBatch(
+          fileResults.map(fr => ({ uri: vscode.Uri.file(fr.filePath), issues: fr.issues }))
+        )
 
         // Create summary data
         const summaryData: AnalysisSummaryData = {
@@ -1379,18 +1437,23 @@ async function analyzeProject() {
           mediumCount: normalizedIssues.filter(i => i.severity === 'medium')
             .length,
           lowCount: normalizedIssues.filter(i => i.severity === 'low').length,
-          ...(result.summary?.overallScore !== undefined && { overallScore: result.summary.overallScore }),
+          ...(finalResult.summary?.overallScore !== undefined && {
+            overallScore: finalResult.summary.overallScore,
+          }),
           folderPath: folders[0]!.name,
         }
 
         // Update tree views with file-grouped results
         issuesTreeProvider.updateFileResults(fileResults, summaryData)
         recommendationsTreeProvider.updateRecommendations(
-          result.recommendations || []
+          finalResult.recommendations || []
         )
-        metricsTreeProvider.updateMetrics(result.summary)
+        metricsTreeProvider.updateMetrics(finalResult.summary)
 
-        showAnalysisSummary(result.summary)
+        vscode.window.showInformationMessage(
+          `Jokalala: analyzed ${files.length} of ${files.length} matching file(s) — ${normalizedIssues.length} issue(s) found` +
+            (finalResult.metadata?.analysisTier === 'hybrid' ? ' (local + cloud).' : ' (local).')
+        )
       } catch (error: any) {
         if (token.isCancellationRequested) {
           logger.warn('Project analysis cancelled after request was sent')

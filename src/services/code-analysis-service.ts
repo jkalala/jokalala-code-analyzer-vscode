@@ -3,6 +3,7 @@ import * as vscode from 'vscode'
 import {
   AnalysisOptions,
   AnalysisResult,
+  FileAnalysisResult,
   HealthCheckResult,
   ICodeAnalysisService,
   ProjectAnalysisOptions,
@@ -34,7 +35,30 @@ import { ConfigurationService } from './configuration-service'
 import { Logger } from './logger'
 import { SecurityService } from './security-service'
 import { getOfflineAnalyzer } from '../core/offline-analyzer'
+import { getCustomRuleEngine } from '../core/custom-rules'
 import type { Issue } from '../interfaces/code-analysis-service.interface'
+
+/** Reverse of CustomRuleEngine's internal extension→language map (custom-rules.ts),
+ * used to synthesize a filename for language-applicability checks when no real
+ * file path is available (e.g. selection-only analysis). */
+function extensionForLanguage(language: string): string {
+  const map: Record<string, string> = {
+    typescript: '.ts',
+    typescriptreact: '.tsx',
+    javascript: '.js',
+    javascriptreact: '.jsx',
+    python: '.py',
+    java: '.java',
+    go: '.go',
+    rust: '.rs',
+    c: '.c',
+    cpp: '.cpp',
+    csharp: '.cs',
+    php: '.php',
+    ruby: '.rb',
+  }
+  return map[language.toLowerCase()] || '.txt'
+}
 
 // Lazily resolve audit service to avoid circular imports at module load time
 function tryGetAudit() {
@@ -298,7 +322,12 @@ export class CodeAnalysisService implements ICodeAnalysisService {
       issue.category ||
       issue.id ||
       issue.message
-    return `${cwe}:${line}`
+    // Include filePath so project-wide merges can't collide two unrelated
+    // findings that happen to share a CWE + line number in different files.
+    // Harmless for single-file hybrid merges, where filePath is unset on
+    // both sides and this is just a constant empty-string prefix.
+    const file = issue.filePath ?? issue.location?.filePath ?? ''
+    return `${file}:${cwe}:${line}`
   }
 
   private mergeLocalAndCloud(
@@ -348,10 +377,46 @@ export class CodeAnalysisService implements ICodeAnalysisService {
     }
   }
 
+  /**
+   * Project-scope equivalent of mergeLocalAndCloud: merges an uncapped local
+   * scan with a bounded cloud-enrichment pass over a subset of the same
+   * files, reusing the same dedupe logic (now filePath-aware) and rebuilding
+   * per-file grouping from the merged flat issue list.
+   */
+  mergeProjectResults(
+    local: ProjectAnalysisResult,
+    cloud: ProjectAnalysisResult,
+    requestId: string
+  ): ProjectAnalysisResult {
+    const mergedFlat = this.mergeLocalAndCloud(local, cloud, requestId)
+
+    const fileResultsMap = new Map<string, FileAnalysisResult>()
+    for (const fr of local.fileResults ?? []) {
+      fileResultsMap.set(fr.filePath, { filePath: fr.filePath, issues: [], language: fr.language })
+    }
+    for (const issue of mergedFlat.prioritizedIssues) {
+      const key = issue.filePath ?? ''
+      const existing = fileResultsMap.get(key)
+      if (existing) {
+        existing.issues.push(issue)
+      } else {
+        fileResultsMap.set(key, { filePath: key, issues: [issue] })
+      }
+    }
+
+    return {
+      ...mergedFlat,
+      filesAnalyzed: local.filesAnalyzed,
+      filesSkipped: (local.filesSkipped ?? 0) + (cloud.filesSkipped ?? 0),
+      fileResults: Array.from(fileResultsMap.values()),
+    }
+  }
+
   private runOfflineAnalysis(
     code: string,
     language: string,
-    requestId: string
+    requestId: string,
+    filePath?: string
   ): AnalysisResult {
     const offline = getOfflineAnalyzer()
     const profile =
@@ -383,6 +448,12 @@ export class CodeAnalysisService implements ICodeAnalysisService {
       },
     }))
 
+    // Custom/plugin rules (managed via the Plugins panel, CustomRuleEngine)
+    // used to be pure UI — enabling a rule there never affected a real scan.
+    // Run them here too so they actually contribute findings.
+    const customRuleIssues = this.runCustomRules(code, language, filePath)
+    prioritizedIssues.push(...customRuleIssues)
+
     return {
       prioritizedIssues,
       recommendations: [
@@ -394,11 +465,11 @@ export class CodeAnalysisService implements ICodeAnalysisService {
         },
       ],
       summary: {
-        totalIssues: result.summary.totalIssues,
-        criticalIssues: result.summary.criticalCount,
-        highIssues: result.summary.highCount,
-        mediumIssues: result.summary.mediumCount,
-        lowIssues: result.summary.lowCount,
+        totalIssues: prioritizedIssues.length,
+        criticalIssues: prioritizedIssues.filter(i => i.severity === 'critical').length,
+        highIssues: prioritizedIssues.filter(i => i.severity === 'high').length,
+        mediumIssues: prioritizedIssues.filter(i => i.severity === 'medium').length,
+        lowIssues: prioritizedIssues.filter(i => i.severity === 'low').length,
         analysisTime: result.summary.analysisTime,
       },
       requestId,
@@ -406,6 +477,117 @@ export class CodeAnalysisService implements ICodeAnalysisService {
         hasV2Report: false,
         v2AnalyzerVersion: 'local-tier1',
         rulesVersion: result.metadata.rulesVersion,
+      },
+    }
+  }
+
+  /**
+   * Run the user/plugin-authored CustomRuleEngine rules (managed via the
+   * Plugins panel) against a file and convert matches to Issues. filePath
+   * drives the engine's language-applicability check (rule.languages vs.
+   * file extension); when unavailable, a synthetic name is derived from the
+   * language id so at least language-scoped (non-wildcard) rules still work.
+   */
+  private runCustomRules(code: string, language: string, filePath?: string): Issue[] {
+    try {
+      const ruleEngine = getCustomRuleEngine()
+      const fileName = filePath ?? `untitled${extensionForLanguage(language)}`
+      const matches = ruleEngine.execute(code, fileName)
+
+      return matches.map(match => ({
+        id: `custom:${match.ruleId}:${fileName}:${match.line}`,
+        ruleId: match.ruleId,
+        severity: match.severity as Issue['severity'],
+        category: match.category,
+        message: match.message,
+        suggestion: match.suggestion,
+        source: 'static' as const,
+        codeSnippet: match.codeSnippet,
+        line: match.line,
+        column: match.column,
+        location: {
+          startLine: match.line,
+          endLine: match.endLine,
+          startColumn: match.column,
+          endColumn: match.endColumn,
+        },
+        tags: ['custom-rule', ...(Array.isArray(match.metadata?.tags) ? match.metadata!.tags as string[] : [])],
+        metadata: {
+          ...match.metadata,
+          source: 'custom-rule',
+        },
+      }))
+    } catch (error) {
+      // Custom rules must never break a real scan — log and continue.
+      this.logger.warn('Custom rule execution failed', { error: getErrorMessage(error) })
+      return []
+    }
+  }
+
+  /**
+   * Local-only, uncapped project scan — no cloud, no auth, no file-count
+   * wall beyond whatever safety ceiling the caller applied when collecting
+   * `files`. Runs the same per-file engine as single-file analysis
+   * (runOfflineAnalysis, including custom/plugin rules) in yielded chunks so
+   * the extension host stays responsive on large file sets.
+   */
+  async analyzeProjectLocally(
+    files: ProjectFile[],
+    cancellationToken?: vscode.CancellationToken,
+    onProgress?: (filesDone: number, filesTotal: number) => void
+  ): Promise<ProjectAnalysisResult> {
+    const requestId = this.generateRequestId()
+    const CHUNK_SIZE = 200
+    const fileResults: FileAnalysisResult[] = []
+    const allIssues: Issue[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      if (cancellationToken?.isCancellationRequested) break
+
+      const file = files[i]!
+      const single = this.runOfflineAnalysis(file.content, file.language, requestId, file.path)
+      const issuesWithPath = single.prioritizedIssues.map(issue => ({
+        ...issue,
+        filePath: file.path,
+      }))
+
+      allIssues.push(...issuesWithPath)
+      fileResults.push({ filePath: file.path, issues: issuesWithPath, language: file.language })
+      onProgress?.(i + 1, files.length)
+
+      // Yield periodically so a large scan can't freeze the extension host,
+      // and so cancellation is actually observed mid-scan.
+      if ((i + 1) % CHUNK_SIZE === 0) {
+        await new Promise<void>(resolve => setImmediate(resolve))
+      }
+    }
+
+    const countBy = (sev: string) => allIssues.filter(i => i.severity === sev).length
+
+    return {
+      prioritizedIssues: allIssues,
+      recommendations: [
+        {
+          title: 'Local Tier-1 project analysis',
+          description:
+            'Results from bundled deterministic rule packs and custom/plugin rules across the full project (no cloud).',
+          category: 'general',
+        },
+      ],
+      summary: {
+        totalIssues: allIssues.length,
+        criticalIssues: countBy('critical'),
+        highIssues: countBy('high'),
+        mediumIssues: countBy('medium'),
+        lowIssues: countBy('low'),
+      },
+      filesAnalyzed: fileResults.length,
+      filesSkipped: 0,
+      fileResults,
+      requestId,
+      metadata: {
+        analysisTier: 'local',
+        v2AnalyzerVersion: 'local-tier1',
       },
     }
   }
@@ -434,7 +616,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
     })
 
     if (tier === 'local') {
-      const local = this.runOfflineAnalysis(code, language, requestId)
+      const local = this.runOfflineAnalysis(code, language, requestId, options?.filePath)
       audit?.record(AuditEvent.ANALYSIS_COMPLETED, {
         requestId,
         language,
@@ -445,7 +627,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
 
     const localResult =
       tier === 'hybrid'
-        ? this.runOfflineAnalysis(code, language, requestId)
+        ? this.runOfflineAnalysis(code, language, requestId, options?.filePath)
         : null
 
     if (!apiEndpoint) {
@@ -601,7 +783,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
       } else if (axiosError.request) {
         // Try offline as last resort
         try {
-          return this.runOfflineAnalysis(code, language, requestId)
+          return this.runOfflineAnalysis(code, language, requestId, options?.filePath)
         } catch {
           throw new Error(
             `Cannot connect to the Jokalala API. Check your jokalala.apiEndpoint setting and network connection.`
@@ -618,29 +800,25 @@ export class CodeAnalysisService implements ICodeAnalysisService {
   /**
    * Perform project analysis (internal method)
    */
-  private async performProjectAnalysis(
-    files: ProjectFile[],
-    options: ProjectAnalysisOptions | undefined,
-    requestId: string
+  /**
+   * Send one batch of files to the cloud analyze-project endpoint. Extracted
+   * from what used to be the whole of performProjectAnalysis so it can be
+   * called once per chunk (and retried per chunk) instead of sending an
+   * entire project's file contents in a single unbounded request.
+   */
+  private async sendProjectBatch(
+    apiEndpoint: string,
+    batch: ProjectFile[],
+    requestId: string,
+    timeout: number,
+    abortController: AbortController
   ): Promise<ProjectAnalysisResult> {
-    const { apiEndpoint, requestTimeout } = this.settings
-    const timeout = options?.timeout || Math.max(requestTimeout, 300000)
-
-    if (!apiEndpoint) {
-      throw new Error('API endpoint not configured')
-    }
-
-    // Create abort controller for this request
-    const abortController = new AbortController()
-    this.activeRequests.set(requestId, abortController)
-
     try {
-      // Execute request with circuit breaker protection
       const response = await this.circuitBreaker.execute(apiEndpoint, async () =>
         axios.post(
           `${apiEndpoint}/analyze-project`,
           {
-            files: files.map(f => ({
+            files: batch.map(f => ({
               path: f.path,
               content: f.content,
               language: f.language,
@@ -659,53 +837,47 @@ export class CodeAnalysisService implements ICodeAnalysisService {
         )
       )
 
-      if (response.data.success) {
-        const data = response.data.data
+      if (!response.data.success) {
+        throw new Error(response.data.error?.message || 'Project analysis failed')
+      }
 
-        // Transform recommendations if they're strings
-        if (Array.isArray(data.recommendations)) {
-          data.recommendations = data.recommendations.map((rec: any) =>
-            typeof rec === 'string'
-              ? { title: rec, description: rec, category: 'general' }
-              : rec
-          )
-        }
+      const data = response.data.data
 
-        // Set default values for project-specific fields
-        if (!data.filesAnalyzed) {
-          data.filesAnalyzed = files.length
-        }
-        if (!data.filesSkipped) {
-          data.filesSkipped = 0
-        }
-
-        // Validate the response
-        try {
-          validateProjectAnalysisResult(data)
-        } catch (error) {
-          if (error instanceof ValidationError) {
-            this.logger.warn(
-              `Response validation failed: ${error.message}. Sanitizing response.`
-            )
-            // Sanitize the response to ensure it has all required fields
-            const sanitized = sanitizeProjectAnalysisResult(data)
-            sanitized.requestId = requestId
-            return sanitized
-          }
-          throw error
-        }
-
-        // Add request ID
-        data.requestId = requestId
-        return data as ProjectAnalysisResult
-      } else {
-        throw new Error(
-          response.data.error?.message || 'Project analysis failed'
+      // Transform recommendations if they're strings
+      if (Array.isArray(data.recommendations)) {
+        data.recommendations = data.recommendations.map((rec: any) =>
+          typeof rec === 'string'
+            ? { title: rec, description: rec, category: 'general' }
+            : rec
         )
       }
-    } catch (error: any) {
-      this.logger.error('Project analysis request failed', error)
 
+      // Set default values for project-specific fields
+      if (!data.filesAnalyzed) {
+        data.filesAnalyzed = batch.length
+      }
+      if (!data.filesSkipped) {
+        data.filesSkipped = 0
+      }
+
+      // Validate the response
+      try {
+        validateProjectAnalysisResult(data)
+      } catch (error) {
+        if (error instanceof ValidationError) {
+          this.logger.warn(
+            `Response validation failed: ${error.message}. Sanitizing response.`
+          )
+          const sanitized = sanitizeProjectAnalysisResult(data)
+          sanitized.requestId = requestId
+          return sanitized
+        }
+        throw error
+      }
+
+      data.requestId = requestId
+      return data as ProjectAnalysisResult
+    } catch (error: any) {
       if (axios.isCancel(error)) {
         throw new Error('Project analysis request was cancelled')
       }
@@ -730,6 +902,95 @@ export class CodeAnalysisService implements ICodeAnalysisService {
         throw new Error('Cannot connect to server. Start the Jokalala backend with: pnpm dev')
       } else {
         throw new Error(`Request failed: ${error.message}`)
+      }
+    }
+  }
+
+  /**
+   * Chunked cloud project analysis: splits `files` into
+   * `cloudEnrichmentBatchSize`-sized batches, sends each through the
+   * existing circuit breaker plus real retry (finally wiring the
+   * retryEnabled/maxRetries/retryDelay settings, previously declared but
+   * never read anywhere), and aggregates the results. Replaces the old
+   * behavior of sending every file's full content in one unbounded request.
+   */
+  private async performProjectAnalysis(
+    files: ProjectFile[],
+    options: ProjectAnalysisOptions | undefined,
+    requestId: string
+  ): Promise<ProjectAnalysisResult> {
+    const {
+      apiEndpoint,
+      requestTimeout,
+      retryEnabled,
+      maxRetries,
+      retryDelay,
+      cloudEnrichmentBatchSize,
+    } = this.settings
+    const timeout = options?.timeout || Math.max(requestTimeout, 300000)
+
+    if (!apiEndpoint) {
+      throw new Error('API endpoint not configured')
+    }
+
+    const abortController = new AbortController()
+    this.activeRequests.set(requestId, abortController)
+
+    const batchSize = Math.max(1, cloudEnrichmentBatchSize ?? 40)
+    const batches: ProjectFile[][] = []
+    for (let i = 0; i < files.length; i += batchSize) {
+      batches.push(files.slice(i, i + batchSize))
+    }
+
+    const allIssues: Issue[] = []
+    const allRecommendations: unknown[] = []
+    let filesSkipped = 0
+    let lastMetadata: ProjectAnalysisResult['metadata']
+
+    try {
+      for (const batch of batches) {
+        if (abortController.signal.aborted) break
+
+        const retryResult = await retryWithBackoff(
+          () => this.sendProjectBatch(apiEndpoint, batch, requestId, timeout, abortController),
+          {
+            maxAttempts: retryEnabled === false ? 1 : Math.max(1, maxRetries ?? 3),
+            initialDelay: retryDelay ?? 1000,
+            isRetryable: isRetryableError,
+          }
+        )
+
+        if (!retryResult.success) {
+          this.logger.error('Project analysis batch failed', retryResult.error)
+          throw retryResult.error ?? new Error('Cloud project-batch analysis failed')
+        }
+
+        const batchResult = retryResult.result!
+        allIssues.push(...(batchResult.prioritizedIssues ?? []))
+        if (Array.isArray(batchResult.recommendations)) {
+          allRecommendations.push(...batchResult.recommendations)
+        }
+        filesSkipped += batchResult.filesSkipped ?? 0
+        lastMetadata = batchResult.metadata
+      }
+
+      const countBy = (sev: string) =>
+        allIssues.filter(i => String(i.severity).toLowerCase() === sev).length
+
+      return {
+        prioritizedIssues: allIssues,
+        recommendations: allRecommendations as ProjectAnalysisResult['recommendations'],
+        summary: {
+          totalIssues: allIssues.length,
+          criticalIssues: countBy('critical'),
+          highIssues: countBy('high'),
+          mediumIssues: countBy('medium'),
+          lowIssues: countBy('low'),
+        },
+        filesAnalyzed: files.length - filesSkipped,
+        filesSkipped,
+        requestId,
+        metadata: { ...(lastMetadata ?? {}), analysisTier: 'cloud' },
       }
     } finally {
       this.activeRequests.delete(requestId)

@@ -174,7 +174,7 @@ suite('ConfigurationService - Bounds Checking Tests', () => {
       'maxFileSize should be within bounds'
     )
     assert.ok(
-      settings.maxProjectFiles >= 1 && settings.maxProjectFiles <= 200,
+      settings.maxProjectFiles >= 1 && settings.maxProjectFiles <= 100_000,
       'maxProjectFiles should be within bounds'
     )
     assert.ok(

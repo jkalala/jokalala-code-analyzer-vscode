@@ -68,10 +68,21 @@ export interface ExtensionSettings {
   showInlineWarnings: boolean
   enableDiagnostics: boolean
   maxFileSize: number
+  /** Safety ceiling on total files considered per "Analyze Entire Project"
+   * local scan — not a cloud batch size (see cloudEnrichmentMaxFiles). */
   maxProjectFiles: number
   maxProjectFileSize: number
   requestTimeout: number
   enableTelemetry: boolean
+
+  /** Whether project scans also get a bounded cloud Stage-1 enrichment pass
+   * on top of the (always-on, local, uncapped) Tier-1 scan. Requires sign-in
+   * or an API key; local scanning itself never requires either. */
+  cloudEnrichmentEnabled?: boolean
+  /** Max files sent to cloud per project scan, highest local-severity first. */
+  cloudEnrichmentMaxFiles?: number
+  /** Files per chunked cloud analyze-project HTTP request. */
+  cloudEnrichmentBatchSize?: number
 
   // New settings for enhanced features
   cacheEnabled?: boolean

@@ -7,12 +7,16 @@ import { compileMetavarPattern } from './compile-metavar'
 import type {
   CompiledRule,
   LoadedRulePack,
+  MetavariableConstraint,
   RulePackManifest,
   RulePackPattern,
   RulePackPatternAtom,
   RulePackRule,
   Severity,
 } from './types'
+
+/** Matches the safe comparison subset this matcher supports: `$VAR <op> NUMBER`. */
+const COMPARISON_RE = /^\$(\w+)\s*(<=|>=|==|!=|<|>)\s*(-?\d+(?:\.\d+)?)$/
 
 const VALID_SEVERITIES = new Set(['critical', 'high', 'medium', 'low', 'info'])
 
@@ -143,6 +147,7 @@ function compileRulePatterns(
   const negative: RegExp[] = []
   const inside: RegExp[] = []
   const notInside: RegExp[] = []
+  const metavariableConstraints: MetavariableConstraint[] = []
 
   for (const p of rule.patterns as RulePackPattern[]) {
     if (p.type === 'regex' || p.type === 'pattern') {
@@ -157,8 +162,31 @@ function compileRulePatterns(
       inside.push(compileAtom(p.pattern))
     } else if (p.type === 'pattern-not-inside') {
       notInside.push(compileAtom(p.pattern))
+    } else if (p.type === 'metavariable-pattern') {
+      // Constrain an already-captured metavariable (e.g. $CODE) to also
+      // match a nested pattern — e.g. "only if $CODE contains req.".
+      const metavariable = p.metavariable.replace(/^\$/, '')
+      metavariableConstraints.push({
+        kind: 'pattern',
+        metavariable,
+        regex: compileAtom(p.pattern),
+      })
+    } else if (p.type === 'metavariable-comparison') {
+      // Only a safe `$VAR <op> NUMBER` subset is supported — anything else
+      // (arbitrary expressions) is dropped rather than silently ignored at
+      // match time, so an over-broad rule fails loud in tests/parity checks
+      // instead of quietly over-firing in production.
+      const match = COMPARISON_RE.exec(p.comparison.trim())
+      if (match) {
+        const [, metavariable, operator, value] = match
+        metavariableConstraints.push({
+          kind: 'comparison',
+          metavariable: metavariable!,
+          operator: operator as '<' | '<=' | '>' | '>=' | '==' | '!=',
+          value: Number(value),
+        })
+      }
     }
-    // metavariable-* skipped in Tier-1 surface matcher (cloud Stage-1 handles full set)
   }
 
   return {
@@ -169,6 +197,7 @@ function compileRulePatterns(
     negative,
     inside,
     notInside,
+    metavariableConstraints,
   }
 }
 

@@ -74,6 +74,8 @@ export interface AnalysisOptions {
   timeout?: number
   /** Whether to use cached results if available */
   useCache?: boolean
+  /** File path/name, used for custom-rule language-applicability checks */
+  filePath?: string
 }
 
 export interface ProjectAnalysisOptions extends AnalysisOptions {

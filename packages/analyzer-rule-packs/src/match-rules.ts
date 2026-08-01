@@ -2,7 +2,59 @@
  * Surface regex matcher for compiled rule packs.
  */
 
-import type { CompiledRule, PackFinding, Severity } from './types'
+import type { CompiledRule, MetavariableConstraint, PackFinding, Severity } from './types'
+
+function evaluateComparison(operator: string, actual: number, expected: number): boolean {
+  switch (operator) {
+    case '<':
+      return actual < expected
+    case '<=':
+      return actual <= expected
+    case '>':
+      return actual > expected
+    case '>=':
+      return actual >= expected
+    case '==':
+      return actual === expected
+    case '!=':
+      return actual !== expected
+    default:
+      return true
+  }
+}
+
+/**
+ * Checks whether a positive match's captured metavariables (named capture
+ * groups compiled by compile-metavar.ts) satisfy the rule's
+ * metavariable-pattern/metavariable-comparison constraints. A constraint
+ * whose metavariable wasn't captured by this particular positive pattern is
+ * treated as satisfied (not every pattern in a rule captures every
+ * metavariable the rule references).
+ */
+function satisfiesMetavariableConstraints(
+  constraints: MetavariableConstraint[],
+  groups: Record<string, string> | undefined
+): boolean {
+  if (constraints.length === 0) return true
+  for (const constraint of constraints) {
+    const captured = groups?.[constraint.metavariable]
+    if (captured === undefined) continue
+
+    if (constraint.kind === 'pattern') {
+      // The compiled pattern always carries a global flag (compileAtom
+      // forces one) and is reused across every match of this rule, so
+      // .test() would otherwise advance lastIndex statefully and produce
+      // intermittent false negatives on repeated calls.
+      constraint.regex.lastIndex = 0
+      if (!constraint.regex.test(captured)) return false
+    } else {
+      const actual = Number(captured)
+      if (Number.isNaN(actual)) return false
+      if (!evaluateComparison(constraint.operator, actual, constraint.value)) return false
+    }
+  }
+  return true
+}
 
 function lineColAt(source: string, index: number): { line: number; column: number } {
   let line = 1
@@ -100,6 +152,11 @@ export function matchCompiledRules(
         }
 
         if (notInsideSpans.some((s) => spansOverlap(start, end, s.start, s.end))) {
+          if (hit.length === 0) clone.lastIndex++
+          continue
+        }
+
+        if (!satisfiesMetavariableConstraints(cr.metavariableConstraints, m.groups)) {
           if (hit.length === 0) clone.lastIndex++
           continue
         }

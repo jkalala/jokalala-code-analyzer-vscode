@@ -53,6 +53,23 @@ export class DiagnosticsManager {
   }
 
   /**
+   * Update diagnostics for many files in a single VS Code API call.
+   * Use for project-wide scans — one `diagnosticCollection.set(entries)` call
+   * with hundreds/thousands of entries is dramatically cheaper than that many
+   * individual `.set(uri, diagnostics)` calls (each of which triggers its own
+   * internal diff/redraw bookkeeping).
+   */
+  updateDiagnosticsBatch(entries: { uri: vscode.Uri; issues: Issue[] }[]): void {
+    const batch: [vscode.Uri, vscode.Diagnostic[]][] = entries.map(
+      ({ uri, issues }) => {
+        const deduped = DeduplicationService.deduplicate(issues) as unknown as Issue[]
+        return [uri, this.createDiagnostics(uri, deduped)]
+      }
+    )
+    this.diagnosticCollection.set(batch)
+  }
+
+  /**
    * Flush all pending diagnostic updates
    * Called by the debounced function
    */

@@ -113,6 +113,24 @@ export interface PackFinding {
   engineTier: 1
 }
 
+/**
+ * A metavariable-pattern/metavariable-comparison constraint, evaluated
+ * against the named capture group a positive match produced for that
+ * metavariable (see compile-metavar.ts, which compiles `$FOO` into
+ * `(?<FOO>...)`). Only a safe, minimal subset of semgrep's comparison
+ * language is supported: `$VAR <op> NUMBER`. Comparisons outside that
+ * subset are dropped at compile time rather than silently ignored at
+ * match time (see load-rule-pack.ts).
+ */
+export type MetavariableConstraint =
+  | { kind: 'pattern'; metavariable: string; regex: RegExp }
+  | {
+      kind: 'comparison'
+      metavariable: string
+      operator: '<' | '<=' | '>' | '>=' | '==' | '!='
+      value: number
+    }
+
 export interface CompiledRule {
   rule: RulePackRule
   packId: string
@@ -121,6 +139,7 @@ export interface CompiledRule {
   negative: RegExp[]
   inside: RegExp[]
   notInside: RegExp[]
+  metavariableConstraints: MetavariableConstraint[]
 }
 
 export interface LoadedRulePack {

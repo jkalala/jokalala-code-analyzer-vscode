@@ -106,6 +106,39 @@ failed += runSuite('precision', expectedPrecision, loadDefaultTier1Packs())
   }
 }
 
+// Metavariable constraints (metavariable-pattern / metavariable-comparison)
+// used to be compiled away entirely — js-eval-req-arg and js-weak-rsa-bits
+// fired on ANY eval()/modulusLength regardless of their documented "only if"
+// condition. Confirms both rules now actually enforce their constraint.
+{
+  const findingsFor = (source) => {
+    const hits = []
+    for (const pack of loadFullTier1Packs()) {
+      hits.push(...matchCompiledRules(source, pack.compiled, 'javascript'))
+    }
+    return hits.map((f) => f.ruleId)
+  }
+
+  const cases = [
+    { rule: 'js-eval-req-arg', source: 'eval("just a literal string")', expect: false },
+    { rule: 'js-eval-req-arg', source: 'eval(req.body.command)', expect: true },
+    { rule: 'js-weak-rsa-bits', source: 'generateKeyPair("rsa", { modulusLength: 4096 })', expect: false },
+    { rule: 'js-weak-rsa-bits', source: 'generateKeyPair("rsa", { modulusLength: 512 })', expect: true },
+  ]
+
+  for (const c of cases) {
+    const fired = findingsFor(c.source).includes(c.rule)
+    if (fired !== c.expect) {
+      failed++
+      console.error(
+        `FAIL [metavar] ${c.rule} on "${c.source}": expected fired=${c.expect}, got ${fired}`
+      )
+    } else {
+      console.log(`OK   [metavar] ${c.rule} on "${c.source}": fired=${fired} (expected)`)
+    }
+  }
+}
+
 if (failed > 0) {
   console.error(`\nParity failed: ${failed} fixture(s)`)
   process.exit(1)

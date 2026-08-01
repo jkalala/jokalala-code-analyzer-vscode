@@ -547,18 +547,48 @@
         },
         "jokalala.maxProjectFiles": {
           "type": "number",
-          "default": 40,
-          "description": "Maximum number of files included in a project analysis run"
+          "default": 5000,
+          "description": "Safety ceiling on total files considered per \"Analyze Entire Project\" local scan (not a cloud batch size — see jokalala.cloudEnrichmentMaxFiles). The local scan itself is otherwise uncapped."
         },
         "jokalala.maxProjectFileSize": {
           "type": "number",
           "default": 120000,
           "description": "Maximum size (characters) for each file included in project analysis"
         },
+        "jokalala.cloudEnrichmentEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also send a bounded subset of project-scan files to the cloud for Stage-1 enrichment on top of the local scan. Requires sign-in or an API key; the local scan itself never requires either."
+        },
+        "jokalala.cloudEnrichmentMaxFiles": {
+          "type": "number",
+          "default": 200,
+          "description": "Max files sent to cloud per project scan when jokalala.cloudEnrichmentEnabled is on, highest local-severity first"
+        },
+        "jokalala.cloudEnrichmentBatchSize": {
+          "type": "number",
+          "default": 40,
+          "description": "Files per chunked cloud analyze-project HTTP request"
+        },
         "jokalala.requestTimeout": {
           "type": "number",
           "default": 60000,
           "description": "Timeout (ms) for individual analysis requests"
+        },
+        "jokalala.retryEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Retry failed cloud analysis requests with exponential backoff"
+        },
+        "jokalala.maxRetries": {
+          "type": "number",
+          "default": 3,
+          "description": "Maximum retry attempts for a failed cloud analysis request/batch"
+        },
+        "jokalala.retryDelay": {
+          "type": "number",
+          "default": 1000,
+          "description": "Initial retry delay (ms) for failed cloud analysis requests; doubles each attempt up to 30s"
         },
         "jokalala.enableTelemetry": {
           "type": "boolean",

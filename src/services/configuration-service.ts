@@ -74,10 +74,11 @@ const CONFIGURATION_SCHEMA: ConfigurationSchema = {
   },
   maxProjectFiles: {
     type: 'number',
-    default: 40,
-    description: 'Maximum number of files to analyze in project',
+    default: 5000,
+    description:
+      'Safety ceiling on total files considered per "Analyze Entire Project" local scan (not a cloud batch size — see cloudEnrichmentMaxFiles)',
     minimum: 1,
-    maximum: 200,
+    maximum: 100_000,
     required: true,
   },
   maxProjectFileSize: {
@@ -87,6 +88,30 @@ const CONFIGURATION_SCHEMA: ConfigurationSchema = {
     minimum: 1000,
     maximum: 1_000_000,
     required: true,
+  },
+  cloudEnrichmentEnabled: {
+    type: 'boolean',
+    default: false,
+    description:
+      'Also send a bounded subset of project-scan files to the cloud for Stage-1 enrichment on top of the local scan (requires sign-in or an API key)',
+    required: false,
+  },
+  cloudEnrichmentMaxFiles: {
+    type: 'number',
+    default: 200,
+    description:
+      'Max files sent to cloud per project scan when cloudEnrichmentEnabled, highest local-severity first',
+    minimum: 1,
+    maximum: 5000,
+    required: false,
+  },
+  cloudEnrichmentBatchSize: {
+    type: 'number',
+    default: 40,
+    description: 'Files per chunked cloud analyze-project HTTP request',
+    minimum: 1,
+    maximum: 200,
+    required: false,
   },
   requestTimeout: {
     type: 'number',
