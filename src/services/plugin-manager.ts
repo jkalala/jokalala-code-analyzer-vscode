@@ -106,6 +106,19 @@ export interface LoadedPlugin {
 }
 
 /**
+ * Restricted, message-passing view of the rule engine handed to plugins.
+ * Plugins run in a worker_thread (see plugin-sandbox.ts / plugin-worker.ts)
+ * and never hold a live `CustomRuleEngine` reference — calls here are
+ * serialized across the worker boundary and applied to the real engine by
+ * the host, which is why this is a narrow subset of `CustomRuleEngine`
+ * rather than the full class.
+ */
+export interface PluginRuleEngine {
+  addRule(rule: CustomRule): void
+  addRulePack(pack: RulePack): void
+}
+
+/**
  * Plugin context provided to plugins during activation
  */
 export interface PluginContext {
@@ -115,7 +128,7 @@ export interface PluginContext {
   globalState: vscode.Memento
   workspaceState: vscode.Memento
   subscriptions: { dispose(): void }[]
-  ruleEngine: CustomRuleEngine
+  ruleEngine: PluginRuleEngine
   logger: PluginLogger
 }
 
@@ -170,7 +183,10 @@ export interface PluginManagerConfig {
 }
 
 const DEFAULT_CONFIG: PluginManagerConfig = {
-  enablePlugins: true,
+  // Fail safe: executable plugin code only runs when a caller explicitly
+  // opts in (see initializePluginManager, which reads the real
+  // `jokalala.plugins.enabled` VS Code setting).
+  enablePlugins: false,
   pluginPaths: [],
   enableMarketplace: true,
   autoUpdate: false,
@@ -343,7 +359,11 @@ export class PluginManager extends EventEmitter {
       }
 
       // Load main module if specified — guard against path-traversal attacks
-      // (e.g. manifest.main = "../../node_modules/evil").
+      // (e.g. manifest.main = "../../node_modules/evil"). Unlike declarative
+      // rules/packs above, the module itself is never require()'d here in
+      // the extension host — activatePluginSandboxed() below loads and runs
+      // it inside a worker_thread instead (see plugin-sandbox.ts).
+      let resolvedMainPath: string | undefined
       if (manifest.main) {
         const resolvedMain = path.resolve(pluginPath, manifest.main)
         const resolvedBase = path.resolve(pluginPath)
@@ -356,13 +376,25 @@ export class PluginManager extends EventEmitter {
           )
           loadedPlugin.status = PluginStatus.ERROR
           loadedPlugin.error = 'Plugin manifest.main path is outside the plugin directory'
+        } else if (!this.config.enablePlugins) {
+          // Executable plugin code is gated separately from declarative
+          // rules/rule packs above, which have already been applied by this
+          // point regardless of this flag. Opening a workspace must never be
+          // enough on its own to run code from it.
+          this.log(
+            `Plugin ${manifest.id} provides executable code (manifest.main) but ` +
+              `jokalala.plugins.enabled is false — skipping code execution`
+          )
+          loadedPlugin.status = PluginStatus.DISABLED
+          loadedPlugin.error =
+            'Executable plugin code is disabled (jokalala.plugins.enabled is false)'
         } else if (fs.existsSync(resolvedMain)) {
-          try {
-            // Dynamic require is unavoidable for a plugin system — path is
-            // now verified to be within the plugin's own directory.
-            loadedPlugin.instance = require(resolvedMain)
-          } catch (e) {
-            this.logError(`Failed to load plugin module: ${manifest.id}`, e as Error)
+          const trusted = await this.ensurePluginTrusted(manifest)
+          if (!trusted) {
+            loadedPlugin.status = PluginStatus.DISABLED
+            loadedPlugin.error = 'User declined to run this plugin\'s executable code'
+          } else {
+            resolvedMainPath = resolvedMain
           }
         }
       }
@@ -371,10 +403,13 @@ export class PluginManager extends EventEmitter {
       this.plugins.set(manifest.id, loadedPlugin)
       loadedPlugin.status = PluginStatus.ENABLED
 
-      // Activate plugin through the sandbox (enforces timeout + restricted context)
-      if (loadedPlugin.instance?.activate && this.context) {
+      // Activate plugin inside the worker_thread sandbox (real isolation:
+      // require() + activate() both run off the main thread, with a
+      // timeout that can actually terminate a hung plugin).
+      if (resolvedMainPath && this.context) {
         const sandboxResult = await activatePluginSandboxed(
-          loadedPlugin,
+          resolvedMainPath,
+          manifest,
           this.context,
           this.ruleEngine
         )
@@ -392,6 +427,10 @@ export class PluginManager extends EventEmitter {
             new Error(sandboxResult.error ?? 'Unknown error')
           )
         }
+        // Worker-sandboxed plugins have no live main-thread instance, so
+        // loadedPlugin.instance stays undefined — there is nothing for
+        // unloadPlugin() to call deactivate() on. Each activation is a
+        // fresh, self-contained worker run (see plugin-sandbox.ts).
       }
 
       this.log(`Plugin loaded: ${manifest.displayName || manifest.name} v${manifest.version}`)
@@ -474,6 +513,33 @@ export class PluginManager extends EventEmitter {
     }
 
     return true
+  }
+
+  // ── Execution consent ────────────────────────────────────────────────────
+
+  /**
+   * Ask the user for one-time consent before running a plugin's executable
+   * code. The decision is remembered per plugin id so the prompt doesn't
+   * reappear every reload; a changed/new plugin id (or a plugin that fails
+   * the integrity check above) always requires a fresh decision.
+   */
+  private async ensurePluginTrusted(manifest: PluginManifest): Promise<boolean> {
+    const storageKey = `jokalala.plugins.trusted.${manifest.id}`
+    const stored = this.context?.globalState.get<boolean>(storageKey)
+    if (stored !== undefined) {
+      return stored
+    }
+
+    const choice = await vscode.window.showWarningMessage(
+      `"${manifest.displayName || manifest.name}" (${manifest.id}) is a Jokalala plugin that runs executable code with full extension-host privileges. Only run plugins from sources you trust.`,
+      { modal: true },
+      'Run Plugin',
+      'Skip'
+    )
+
+    const trusted = choice === 'Run Plugin'
+    await this.context?.globalState.update(storageKey, trusted)
+    return trusted
   }
 
   // ── End integrity section ────────────────────────────────────────────────
@@ -754,27 +820,6 @@ MIT
   }
 
   /**
-   * Create plugin context for activation
-   */
-  private createPluginContext(pluginPath: string): PluginContext {
-    return {
-      extensionPath: this.context?.extensionPath || '',
-      pluginPath,
-      storagePath: this.context?.globalStorageUri?.fsPath || '',
-      globalState: this.context?.globalState as vscode.Memento,
-      workspaceState: this.context?.workspaceState as vscode.Memento,
-      subscriptions: [],
-      ruleEngine: this.ruleEngine,
-      logger: {
-        info: (msg, ...args) => this.log(msg, ...args),
-        warn: (msg, ...args) => this.log(`[WARN] ${msg}`, ...args),
-        error: (msg, ...args) => this.logError(msg, new Error(), ...args),
-        debug: (msg, ...args) => this.log(`[DEBUG] ${msg}`, ...args),
-      },
-    }
-  }
-
-  /**
    * Save plugin state
    */
   private async savePluginState(): Promise<void> {
@@ -829,13 +874,21 @@ export function getPluginManager(config?: Partial<PluginManagerConfig>): PluginM
 }
 
 /**
- * Initialize the plugin manager with extension context
+ * Initialize the plugin manager with extension context.
+ *
+ * Reads the real `jokalala.plugins.enabled` setting so executable plugin
+ * code only runs when the user has actually opted in — the setting used to
+ * be defined but never checked by any code path.
  */
 export async function initializePluginManager(
   context: vscode.ExtensionContext,
   config?: Partial<PluginManagerConfig>
 ): Promise<PluginManager> {
-  const manager = getPluginManager(config)
+  const enablePlugins = vscode.workspace
+    .getConfiguration('jokalala')
+    .get<boolean>('plugins.enabled', false)
+
+  const manager = getPluginManager({ enablePlugins, ...config })
   await manager.initialize(context)
   return manager
 }

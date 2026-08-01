@@ -2,7 +2,7 @@
   "name": "jokalala-code-analysis",
   "displayName": "Jokalala Code Analyzer",
   "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 10+ languages.",
-  "version": "2.4.4",
+  "version": "2.4.5",
   "publisher": "jokalala",
   "author": {
     "name": "Jokalala Team",
@@ -567,8 +567,8 @@
         },
         "jokalala.plugins.enabled": {
           "type": "boolean",
-          "default": true,
-          "description": "Enable the plugin system for custom rules and extensions"
+          "default": false,
+          "description": "Allow plugins to run executable JavaScript (manifest.main). Disabled by default for security — a workspace's .jokalala/plugins/ directory is untrusted input. Declarative JSON rule plugins are unaffected by this setting. Requires a window reload to take effect."
         },
         "jokalala.plugins.additionalPaths": {
           "type": "array",
@@ -664,14 +664,15 @@
   "scripts": {
     "watch": "tsc -watch -p ./",
     "pretest": "pnpm run compile",
-    "test": "npm run test:smoke",
-    "test:unit": "pnpm run compile && mocha",
+    "test": "npm run test:unit && npm run test:smoke",
+    "test:unit": "pnpm run compile && pnpm run compile:test && mocha",
     "test:unit:watch": "mocha --watch",
-    "test:coverage": "c8 mocha",
+    "test:coverage": "pnpm run compile && pnpm run compile:test && c8 mocha",
     "publish": "vsce publish",
     "vscode:prepublish": "npm run compile",
     "compile": "npm run compile:tsc && npm run compile:bundle",
     "compile:tsc": "tsc -p ./ --noEmit",
+    "compile:test": "tsc -p tsconfig.test.json",
     "compile:bundle": "node ./scripts/esbuild.js",
     "typecheck": "tsc -p ./ --noEmit",
     "package": "npm run compile && vsce package --no-dependencies",
@@ -684,7 +685,9 @@
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.3.8",
+    "c8": "^9.1.0",
     "esbuild": "^0.23.0",
+    "mocha": "^10.2.0",
     "typescript": "^5.3.3",
     "vsce": "^2.15.0"
   },

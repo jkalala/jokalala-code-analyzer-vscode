@@ -246,57 +246,8 @@ suite('SecurityService Test Suite', () => {
     })
   })
 
-  suite('Token Validation', () => {
-    test('should validate JWT format', () => {
-      const validToken =
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'
-      assert.strictEqual(securityService.validateToken(validToken), true)
-    })
-
-    test('should reject invalid token format', () => {
-      assert.strictEqual(securityService.validateToken('invalid'), false)
-      assert.strictEqual(securityService.validateToken('a.b'), false)
-      assert.strictEqual(securityService.validateToken(''), false)
-      assert.strictEqual(securityService.validateToken(null as any), false)
-    })
-
-    test('should reject tokens with invalid characters', () => {
-      assert.strictEqual(
-        securityService.validateToken('a!b@c.d#e$f.g%h^i'),
-        false
-      )
-    })
-  })
-
-  suite('Token Expiration', () => {
-    test('should detect expired token', () => {
-      // Token with exp in the past (timestamp: 1516239022 = Jan 2018)
-      const expiredToken =
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiZXhwIjoxNTE2MjM5MDIyfQ.4Adcj0vfLwf6JYnwJnI41nZqVRgLvMvXNQqYKQCLMNg'
-      assert.strictEqual(securityService.isTokenExpired(expiredToken), true)
-    })
-
-    test('should detect valid token', () => {
-      // Create a token that expires in the future
-      const futureTimestamp = Math.floor(Date.now() / 1000) + 3600 // 1 hour from now
-      const payload = Buffer.from(
-        JSON.stringify({ exp: futureTimestamp })
-      ).toString('base64url')
-      const validToken = `header.${payload}.signature`
-      assert.strictEqual(securityService.isTokenExpired(validToken), false)
-    })
-
-    test('should consider token without exp as expired', () => {
-      const payload = Buffer.from(JSON.stringify({ sub: '123' })).toString(
-        'base64url'
-      )
-      const tokenWithoutExp = `header.${payload}.signature`
-      assert.strictEqual(securityService.isTokenExpired(tokenWithoutExp), true)
-    })
-
-    test('should consider invalid token as expired', () => {
-      assert.strictEqual(securityService.isTokenExpired('invalid'), true)
-      assert.strictEqual(securityService.isTokenExpired(''), true)
-    })
-  })
+  // Token format validation lives solely in AuthService.isJwtShaped now — see
+  // auth-service.test.ts. This service previously carried a second, divergent
+  // (JWT-only) token validator that silently disagreed with the one actually
+  // used in the sign-in path, which is what caused the 2.4.4 regression.
 })

@@ -14,11 +14,12 @@ scripts/**
 **/tsconfig.json
 **/.eslintrc.json
 
-# Build artifacts — only ship bundled extension entry
+# Build artifacts — only ship bundled extension entry + plugin worker
 **/*.map
 **/*.ts
 dist/**
 !dist/extension.js
+!dist/plugin-worker.js
 
 # Dependencies are bundled
 node_modules/**

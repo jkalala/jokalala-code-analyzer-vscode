@@ -46,6 +46,9 @@ jobs:
       - name: Package extension
         run: npm run package
 
+      - name: Check VSIX size budget
+        run: npm run check:vsix-size
+
       - name: Get version from tag
         id: get_version
         run: |

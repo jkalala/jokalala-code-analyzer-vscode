@@ -41,18 +41,4 @@ export interface ISecurityService {
    * @returns Sanitized error message
    */
   sanitizeErrorMessage(error: Error): string
-
-  /**
-   * Validate authentication token format
-   * @param token The token to validate
-   * @returns True if token is valid format
-   */
-  validateToken(token: string): boolean
-
-  /**
-   * Check if authentication token is expired
-   * @param token The token to check
-   * @returns True if token is expired
-   */
-  isTokenExpired(token: string): boolean
 }

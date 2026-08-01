@@ -38,6 +38,31 @@ export interface AuthState {
   userId: string | null
 }
 
+/**
+ * Basic structural check on the credential returned by the auth callback.
+ * The backend hands back either a persistent `jkl_<tier>_<hex>` API key
+ * (the normal case since it mints one during the callback) or, for older
+ * backends, a raw JWT (three dot-separated Base64url segments). This does
+ * NOT verify the signature/validity — that is done by the server — but it
+ * prevents storing garbage or injected values in SecretStorage.
+ *
+ * This is the ONLY token-format check in the extension — a second,
+ * divergent (JWT-only) validator used to live in security-service.ts and
+ * silently disagreed with this one, which is exactly what caused the 2.4.4
+ * regression (valid `jkl_...` keys being rejected as "unexpected format").
+ * Keep it that way: any future format change only needs updating here.
+ */
+export function isJwtShapedToken(token: string): boolean {
+  if (token.startsWith('jkl_')) {
+    return /^jkl_[A-Za-z0-9_-]{10,200}$/.test(token)
+  }
+  const parts = token.split('.')
+  if (parts.length !== 3) return false
+  // Each part must be non-empty and Base64url-safe characters only
+  const base64url = /^[A-Za-z0-9_-]+$/
+  return parts.every(p => p.length > 0 && base64url.test(p))
+}
+
 export class AuthService {
   private context: vscode.ExtensionContext
   private _authState: AuthState = { isAuthenticated: false, token: null, userId: null }
@@ -80,25 +105,6 @@ export class AuthService {
     )
   }
 
-  /**
-   * Basic structural check on the credential returned by the auth callback.
-   * The backend hands back either a persistent `jkl_<tier>_<hex>` API key
-   * (the normal case since it mints one during the callback) or, for older
-   * backends, a raw JWT (three dot-separated Base64url segments). This does
-   * NOT verify the signature/validity — that is done by the server — but it
-   * prevents storing garbage or injected values in SecretStorage.
-   */
-  private isJwtShaped(token: string): boolean {
-    if (token.startsWith('jkl_')) {
-      return /^jkl_[A-Za-z0-9_-]{10,200}$/.test(token)
-    }
-    const parts = token.split('.')
-    if (parts.length !== 3) return false
-    // Each part must be non-empty and Base64url-safe characters only
-    const base64url = /^[A-Za-z0-9_-]+$/
-    return parts.every(p => p.length > 0 && base64url.test(p))
-  }
-
   /** Called by the URI handler when VS Code receives the deep-link callback */
   async handleAuthCallback(uri: vscode.Uri): Promise<void> {
     const params = new URLSearchParams(uri.query)
@@ -111,7 +117,7 @@ export class AuthService {
     }
 
     // Reject tokens that don't look like JWTs to prevent storing injected values
-    if (!this.isJwtShaped(token)) {
+    if (!isJwtShapedToken(token)) {
       tryGetAudit()?.record(AuditEvent.AUTH_TOKEN_INVALID_FORMAT)
       vscode.window.showErrorMessage(
         'Authentication failed: received token has an unexpected format. Please try signing in again.'

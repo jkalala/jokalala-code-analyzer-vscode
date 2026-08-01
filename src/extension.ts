@@ -1296,6 +1296,9 @@ async function analyzeProject() {
 
         if (skipped.length > 0) {
           logger.warn('Skipped large files during project analysis', skipped)
+          vscode.window.showWarningMessage(
+            `Project analysis skipped ${skipped.length} file(s) exceeding the ${settings.maxProjectFileSize}-character size limit.`
+          )
         }
 
         progress.report({
@@ -1354,6 +1357,17 @@ async function analyzeProject() {
           ...fr,
           score: calculateFileScore(fr.issues),
         }))
+
+        // Mirror findings into the editor/Problems panel, not just the
+        // Jokalala sidebar — project scans previously only updated the
+        // custom tree views, so results were invisible to anyone checking
+        // squiggles or Problems instead of the sidebar.
+        for (const fileResult of fileResults) {
+          diagnosticsManager.updateDiagnosticsImmediate(
+            vscode.Uri.file(fileResult.filePath),
+            fileResult.issues
+          )
+        }
 
         // Create summary data
         const summaryData: AnalysisSummaryData = {

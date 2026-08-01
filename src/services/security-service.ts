@@ -133,66 +133,6 @@ export class SecurityService implements ISecurityService {
   }
 
   /**
-   * Validate authentication token format
-   * Checks for basic JWT structure (header.payload.signature)
-   */
-  validateToken(token: string): boolean {
-    if (!token || typeof token !== 'string') {
-      return false
-    }
-
-    // Basic JWT format validation: three base64url-encoded parts separated by dots
-    const parts = token.split('.')
-    if (parts.length !== 3) {
-      return false
-    }
-
-    // Check that each part is non-empty and contains valid base64url characters
-    const base64UrlPattern = /^[A-Za-z0-9_-]+$/
-    return parts.every(part => part.length > 0 && base64UrlPattern.test(part))
-  }
-
-  /**
-   * Check if authentication token is expired
-   * Decodes JWT payload and checks exp claim
-   */
-  isTokenExpired(token: string): boolean {
-    if (!this.validateToken(token)) {
-      return true
-    }
-
-    try {
-      const parts = token.split('.')
-      if (parts.length < 2) {
-        return true
-      }
-
-      const payload = parts[1]
-      if (!payload) {
-        return true
-      }
-
-      // Decode base64url
-      const base64 = payload.replace(/-/g, '+').replace(/_/g, '/')
-      const jsonPayload = Buffer.from(base64, 'base64').toString('utf-8')
-      const decoded = JSON.parse(jsonPayload)
-
-      // Check exp claim
-      if (!decoded.exp || typeof decoded.exp !== 'number') {
-        // If no expiration, consider it expired for safety
-        return true
-      }
-
-      // exp is in seconds, Date.now() is in milliseconds
-      const currentTime = Math.floor(Date.now() / 1000)
-      return decoded.exp < currentTime
-    } catch {
-      // If we can't decode or parse, consider it expired
-      return true
-    }
-  }
-
-  /**
    * Migrate API key from workspace configuration to SecretStorage
    * This method detects if an API key exists in settings and prompts the user to migrate
    */

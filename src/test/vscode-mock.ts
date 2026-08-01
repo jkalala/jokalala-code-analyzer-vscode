@@ -33,10 +33,12 @@ class EventEmitter<T> {
 class Uri {
   readonly scheme: string
   readonly fsPath: string
+  readonly query: string
 
-  private constructor(scheme: string, fsPath: string) {
+  private constructor(scheme: string, fsPath: string, query = '') {
     this.scheme = scheme
     this.fsPath = fsPath
+    this.query = query
   }
 
   static file(path: string): Uri {
@@ -45,7 +47,7 @@ class Uri {
 
   static parse(uriString: string): Uri {
     const url = new URL(uriString)
-    return new Uri(url.protocol.replace(':', ''), url.pathname)
+    return new Uri(url.protocol.replace(':', ''), url.pathname, url.search.replace(/^\?/, ''))
   }
 
   toString(): string {

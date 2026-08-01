@@ -198,7 +198,7 @@ Sign out with **Jokalala: Sign Out**.
 | Credentials | OS keychain (SecretStorage) — never in settings files |
 | API calls | HTTPS enforced; HTTP blocked for non-localhost |
 | Secrets in code | Pre-screened before transmission; consent required |
-| Plugin code | Sandboxed with read-only state access and 5s timeout |
+| Plugin code | Disabled by default; requires explicit per-plugin consent; runs in a `worker_thread` with read-only state access and a 5s timeout that can actually terminate a hung plugin (see [Plugin System](#plugin-system)) |
 | Plugin files | SHA-256 integrity hash on first load; changes blocked |
 | Auth callback | JWT format validated |
 | Audit log | Tamper-evident chain hashing; sanitised details |
@@ -218,7 +218,16 @@ Report to **security@jokalala.com** (responsible disclosure, 90-day window).
 
 ## Plugin System
 
-Declarative JSON rule plugins under `.jokalala/plugins/`. Executable JS plugins are disabled by default for security. See [PUBLISHING.md](PUBLISHING.md) / plugin docs for the manifest format.
+Declarative JSON rule plugins under `.jokalala/plugins/` load automatically — they're just data, not code.
+
+Executable JS plugins (`manifest.main`) are different: `jokalala.plugins.enabled` is **off by default**, and even when enabled, each plugin requires an explicit one-time "Run Plugin" confirmation before its code ever executes — a workspace being opened is never enough on its own to run code from it.
+
+When a plugin does run, its `activate()` executes inside a Node `worker_thread`, not the extension host's main thread:
+
+- It never receives a live reference to VS Code APIs, SecretStorage, or the rule engine — only a restricted context (read-only state, a message-based API for contributing rules) and a **5s timeout enforced via `worker.terminate()`**, which can actually stop a hung/`while (true)` plugin (a wall-clock timeout around in-process code cannot).
+- This is real isolation for those two properties, but it is **not a full OS-level sandbox** — a worker_thread shares the host process's privileges, so a plugin's own code can still call Node's `fs`/`child_process`/`net` directly. Combined with the path-traversal check and SHA-256 integrity hash (blocks a plugin's files from changing after you've trusted it) below, this is defense-in-depth, not a hard security boundary — only run plugins from sources you trust.
+
+See [PUBLISHING.md](PUBLISHING.md) / plugin docs for the manifest format.
 
 ---
 
