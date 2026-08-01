@@ -114,21 +114,45 @@ function locOf(node: Node): { line: number; column: number; endLine?: number; en
   }
 }
 
+/**
+ * True when a call's command/code argument is a plain string with no
+ * variable interpolation at all — a StringLiteral, or a TemplateLiteral
+ * with zero `${...}` expressions. There is nothing for an attacker to
+ * influence in a call shaped like `exec("git status")` or `` eval(`1+1`) ``;
+ * the risk only exists once *some* part of the argument is dynamic.
+ */
+function isStaticStringArgument(node: Node | null | undefined): boolean {
+  if (!node) return false
+  if (node.type === 'StringLiteral') return true
+  if (node.type === 'TemplateLiteral') return node.expressions.length === 0
+  return false
+}
+
 function findingFromAstRule(
   rule: RulePackRule,
   packId: string,
   packVersion: string,
   node: Node,
-  matchedText: string
+  matchedText: string,
+  opts?: { staticArgument?: boolean }
 ): PackFinding {
   const loc = locOf(node)
+  // Downgrade (never fully suppress) when the dangerous call's argument is
+  // provably static — still worth flagging as a practice to avoid, since
+  // code changes, but it shouldn't carry the same urgency as a call that
+  // could genuinely be reached with attacker-controlled input today. This
+  // is what was inflating "critical" counts on codebases (like SAST/SCA
+  // tooling) that legitimately shell out with hardcoded commands.
+  const downgrade = opts?.staticArgument === true
   return {
     ruleId: rule.id,
     packId,
     packVersion,
     name: rule.name,
-    message: rule.message || rule.name,
-    severity: (rule.severity as PackFinding['severity']) || 'medium',
+    message: downgrade
+      ? `${rule.message || rule.name} (argument is a static string literal — no dynamic input detected; still avoid this API where possible)`
+      : rule.message || rule.name,
+    severity: downgrade ? 'low' : (rule.severity as PackFinding['severity']) || 'medium',
     category: rule.category,
     cweId: rule.cweId,
     owaspCategory: rule.owaspCategory,
@@ -219,11 +243,16 @@ function runAstVisitors(
     byVisitor.set(vr.visitor, list)
   }
 
-  const emit = (visitorId: string, node: Node, text: string) => {
+  const emit = (
+    visitorId: string,
+    node: Node,
+    text: string,
+    opts?: { staticArgument?: boolean }
+  ) => {
     const rules = byVisitor.get(visitorId)
     if (!rules) return
     for (const vr of rules) {
-      findings.push(findingFromAstRule(vr.rule, vr.packId, vr.packVersion, node, text))
+      findings.push(findingFromAstRule(vr.rule, vr.packId, vr.packVersion, node, text, opts))
     }
   }
 
@@ -252,14 +281,19 @@ function runAstVisitors(
     },
     CallExpression(path: any) {
       const name = calleeName(path.node.callee)
+      const firstArg = path.node.arguments?.[0] as Node | undefined
+      const staticArgument = isStaticStringArgument(firstArg)
       if (name === 'eval') {
-        emit('eval', path.node, code.slice(path.node.start ?? 0, path.node.end ?? 0))
+        emit('eval', path.node, code.slice(path.node.start ?? 0, path.node.end ?? 0), {
+          staticArgument,
+        })
       }
       if (name === 'exec' || name === 'execSync' || name === 'spawn' || name === 'spawnSync') {
         emit(
           'childProcessExec',
           path.node,
-          code.slice(path.node.start ?? 0, path.node.end ?? 0)
+          code.slice(path.node.start ?? 0, path.node.end ?? 0),
+          { staticArgument }
         )
       }
     },
