@@ -7,8 +7,10 @@
 
 import axios from 'axios'
 import * as vscode from 'vscode'
+import { AuthService } from './auth-service'
 import { ConfigurationService } from './configuration-service'
 import { Logger } from './logger'
+import { SecurityService } from './security-service'
 
 // ============================================================================
 // Types
@@ -118,8 +120,37 @@ export class RefactoringService {
 
   constructor(
     private readonly configuration: ConfigurationService,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly authService?: AuthService,
+    private readonly securityService?: SecurityService
   ) {}
+
+  /**
+   * Build auth headers the same way code-analysis-service.ts does: prefer
+   * the Sign-In JWT/persistent API key (AuthService), then SecretStorage,
+   * then the deprecated plaintext `jokalala.apiKey` setting as a last
+   * resort. Previously this service only ever read the plaintext setting
+   * directly, so anyone using "Jokalala: Sign In" (the primary flow) sent
+   * every refactoring request with no Authorization header at all.
+   */
+  private async buildAuthHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    const fromAuth = this.authService?.getAuthHeaders()
+    if (fromAuth?.Authorization) {
+      Object.assign(headers, fromAuth)
+      return headers
+    }
+    const settings = this.configuration.getSettings()
+    const apiKey =
+      (await this.securityService?.getApiKeyWithFallback()) ??
+      settings.apiKey?.trim()
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`
+    }
+    return headers
+  }
 
   /**
    * Analyze code and get refactoring suggestions
@@ -154,10 +185,7 @@ export class RefactoringService {
         refactorUrl,
         request,
         {
-          headers: {
-            'Content-Type': 'application/json',
-            ...(settings.apiKey && { Authorization: `Bearer ${settings.apiKey}` }),
-          },
+          headers: await this.buildAuthHeaders(),
           timeout: settings.requestTimeout || 60000,
         }
       )

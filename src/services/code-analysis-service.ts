@@ -36,7 +36,7 @@ import { Logger } from './logger'
 import { SecurityService } from './security-service'
 import { getOfflineAnalyzer } from '../core/offline-analyzer'
 import { getCustomRuleEngine } from '../core/custom-rules'
-import type { Issue } from '../interfaces/code-analysis-service.interface'
+import type { Issue, Recommendation } from '../interfaces/code-analysis-service.interface'
 
 /** Reverse of CustomRuleEngine's internal extension→language map (custom-rules.ts),
  * used to synthesize a filename for language-applicability checks when no real
@@ -412,6 +412,68 @@ export class CodeAnalysisService implements ICodeAnalysisService {
     }
   }
 
+  /**
+   * Build real, per-category recommendations from local findings instead of
+   * a single static "results came from local packs" blurb — every finding
+   * already carries a specific `suggestion` from its rule (e.g. "Never eval
+   * request input; validate and use a safe parser"), it just never reached
+   * the Recommendations panel before.
+   */
+  private buildLocalRecommendations(issues: Issue[]): Recommendation[] {
+    if (issues.length === 0) {
+      return [
+        {
+          title: 'No issues found',
+          description: 'The local Tier-1 scan found no issues in the analyzed code.',
+          category: 'general',
+        },
+      ]
+    }
+
+    const severityRank: Record<string, number> = {
+      critical: 4,
+      high: 3,
+      medium: 2,
+      low: 1,
+      info: 0,
+    }
+
+    const byCategory = new Map<
+      string,
+      { count: number; suggestion?: string; worstSeverity: string }
+    >()
+    for (const issue of issues) {
+      const key = issue.category || 'general'
+      const existing = byCategory.get(key)
+      const rank = severityRank[issue.severity] ?? 0
+      if (!existing) {
+        byCategory.set(key, {
+          count: 1,
+          suggestion: issue.suggestion,
+          worstSeverity: issue.severity,
+        })
+      } else {
+        existing.count++
+        if (rank > (severityRank[existing.worstSeverity] ?? 0)) {
+          existing.worstSeverity = issue.severity
+          existing.suggestion = issue.suggestion ?? existing.suggestion
+        }
+      }
+    }
+
+    return Array.from(byCategory.entries())
+      .sort(
+        (a, b) => (severityRank[b[1].worstSeverity] ?? 0) - (severityRank[a[1].worstSeverity] ?? 0)
+      )
+      .map(([category, info]) => ({
+        title: `${info.count} ${category} issue${info.count > 1 ? 's' : ''} found`,
+        description:
+          info.suggestion || `Review ${info.count} ${category} finding(s) from the local scan.`,
+        category,
+        priority: (severityRank[info.worstSeverity] ?? 0) >= 3 ? 'high' : (severityRank[info.worstSeverity] ?? 0) >= 2 ? 'medium' : 'low',
+      }))
+  }
+
   private runOfflineAnalysis(
     code: string,
     language: string,
@@ -456,14 +518,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
 
     return {
       prioritizedIssues,
-      recommendations: [
-        {
-          title: 'Local Tier-1 analysis',
-          description:
-            'Results from bundled deterministic rule packs (no cloud).',
-          category: 'general',
-        },
-      ],
+      recommendations: this.buildLocalRecommendations(prioritizedIssues),
       summary: {
         totalIssues: prioritizedIssues.length,
         criticalIssues: prioritizedIssues.filter(i => i.severity === 'critical').length,
@@ -566,14 +621,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
 
     return {
       prioritizedIssues: allIssues,
-      recommendations: [
-        {
-          title: 'Local Tier-1 project analysis',
-          description:
-            'Results from bundled deterministic rule packs and custom/plugin rules across the full project (no cloud).',
-          category: 'general',
-        },
-      ],
+      recommendations: this.buildLocalRecommendations(allIssues),
       summary: {
         totalIssues: allIssues.length,
         criticalIssues: countBy('critical'),

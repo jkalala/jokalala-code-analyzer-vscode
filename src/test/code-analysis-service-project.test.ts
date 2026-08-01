@@ -232,3 +232,54 @@ suite('CodeAnalysisService — local project scan', () => {
     )
   })
 })
+
+suite('CodeAnalysisService — local recommendations reflect real findings', () => {
+  let service: CodeAnalysisService
+
+  setup(() => {
+    service = makeService()
+  })
+
+  test('recommendations are derived from actual findings, not a static blurb', async () => {
+    const files = [
+      { path: 'src/danger.js', content: 'eval(userInput)', language: 'javascript' },
+    ]
+    const result = await service.analyzeProjectLocally(files)
+
+    assert.ok(result.recommendations.length > 0)
+    // The old behavior was always exactly one generic "Local Tier-1
+    // analysis" recommendation regardless of what was found.
+    assert.ok(
+      result.recommendations.every(r => r.title !== 'Local Tier-1 analysis' && r.title !== 'Local Tier-1 project analysis'),
+      'should not fall back to the old static placeholder recommendation'
+    )
+    // Should surface the rule's own remediation guidance, not a generic label.
+    const injectionRec = result.recommendations.find(r => r.category === 'injection')
+    assert.ok(injectionRec, 'expected a recommendation grouped under the injection category')
+  })
+
+  test('clean code with no findings gets a "no issues" recommendation', async () => {
+    const files = [{ path: 'src/clean.js', content: 'const x = 1 + 1;', language: 'javascript' }]
+    const result = await service.analyzeProjectLocally(files)
+
+    assert.strictEqual(result.recommendations.length, 1)
+    assert.strictEqual(result.recommendations[0]!.title, 'No issues found')
+  })
+
+  test('recommendations are grouped by category, not one per issue', async () => {
+    const files = [
+      { path: 'src/a.js', content: 'eval("1")', language: 'javascript' },
+      { path: 'src/b.js', content: 'eval("2")', language: 'javascript' },
+      { path: 'src/c.js', content: 'eval("3")', language: 'javascript' },
+    ]
+    const result = await service.analyzeProjectLocally(files)
+
+    const injectionRecs = result.recommendations.filter(r => r.category === 'injection')
+    assert.strictEqual(
+      injectionRecs.length,
+      1,
+      'three findings in the same category should collapse into one grouped recommendation'
+    )
+    assert.ok(injectionRecs[0]!.title.includes('3'))
+  })
+})

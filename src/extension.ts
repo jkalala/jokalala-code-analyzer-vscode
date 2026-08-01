@@ -133,7 +133,12 @@ export async function activate(context: vscode.ExtensionContext) {
     cveTreeProvider = new CVETreeProvider()
     cveService = new CVEService(configurationService, logger)
     refactoringTreeProvider = new RefactoringTreeProvider()
-    refactoringService = new RefactoringService(configurationService, logger)
+    refactoringService = new RefactoringService(
+      configurationService,
+      logger,
+      authService,
+      securityService
+    )
     scaTreeProvider = new SCATreeProvider()
     scaService = new SCAService(configurationService, logger)
     containerIaCTreeProvider = new ContainerIaCTreeProvider()
@@ -451,6 +456,22 @@ export async function activate(context: vscode.ExtensionContext) {
         const editor = vscode.window.activeTextEditor
         if (!editor) {
           vscode.window.showErrorMessage('No active editor')
+          return
+        }
+
+        // Refactoring is cloud-only with no local fallback — warn up front
+        // instead of silently sending an unauthenticated request.
+        const hasApiKey = Boolean(
+          (await securityService.getApiKeyWithFallback())?.trim()
+        )
+        if (!authService.isAuthenticated && !hasApiKey) {
+          const choice = await vscode.window.showWarningMessage(
+            'Refactoring analysis requires signing in to Jokalala (or setting an API key).',
+            'Sign In'
+          )
+          if (choice === 'Sign In') {
+            await authService.signIn()
+          }
           return
         }
 
