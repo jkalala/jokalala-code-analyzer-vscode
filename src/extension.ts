@@ -131,7 +131,7 @@ export async function activate(context: vscode.ExtensionContext) {
     recommendationsTreeProvider = new RecommendationsTreeProvider()
     metricsTreeProvider = new MetricsTreeProvider()
     cveTreeProvider = new CVETreeProvider()
-    cveService = new CVEService(configurationService, logger)
+    cveService = new CVEService(configurationService, logger, authService, securityService)
     refactoringTreeProvider = new RefactoringTreeProvider()
     refactoringService = new RefactoringService(
       configurationService,
@@ -140,7 +140,7 @@ export async function activate(context: vscode.ExtensionContext) {
       securityService
     )
     scaTreeProvider = new SCATreeProvider()
-    scaService = new SCAService(configurationService, logger)
+    scaService = new SCAService(configurationService, logger, authService, securityService)
     containerIaCTreeProvider = new ContainerIaCTreeProvider()
     containerIaCService = new ContainerIaCService(configurationService, logger)
     pluginsTreeProvider = new PluginsTreeProvider()
@@ -309,6 +309,10 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       'jokalala.searchCVE',
       async () => {
+        if (!(await ensureCloudAuthOrPrompt('CVE search'))) {
+          return
+        }
+
         const query = await vscode.window.showInputBox({
           prompt: 'Search for CVE/CWE vulnerabilities',
           placeHolder: 'e.g., SQL injection, XSS, CWE-89'
@@ -339,9 +343,11 @@ export async function activate(context: vscode.ExtensionContext) {
             }
           } else {
             cveTreeProvider.setError(response.error || 'CVE lookup failed')
+            vscode.window.showErrorMessage(`CVE lookup failed: ${response.error || 'unknown error'}`)
           }
         } catch (error: any) {
           cveTreeProvider.setError(error.message)
+          vscode.window.showErrorMessage(`CVE lookup failed: ${error.message}`)
         }
       }
     )
@@ -354,6 +360,10 @@ export async function activate(context: vscode.ExtensionContext) {
         const editor = vscode.window.activeTextEditor
         if (!editor) {
           vscode.window.showErrorMessage('No active editor')
+          return
+        }
+
+        if (!(await ensureCloudAuthOrPrompt('CVE scan'))) {
           return
         }
 
@@ -385,9 +395,11 @@ export async function activate(context: vscode.ExtensionContext) {
             }
           } else {
             cveTreeProvider.setError(response.error || 'CVE scan failed')
+            vscode.window.showErrorMessage(`CVE scan failed: ${response.error || 'unknown error'}`)
           }
         } catch (error: any) {
           cveTreeProvider.setError(error.message)
+          vscode.window.showErrorMessage(`CVE scan failed: ${error.message}`)
         }
       }
     )
@@ -461,17 +473,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Refactoring is cloud-only with no local fallback — warn up front
         // instead of silently sending an unauthenticated request.
-        const hasApiKey = Boolean(
-          (await securityService.getApiKeyWithFallback())?.trim()
-        )
-        if (!authService.isAuthenticated && !hasApiKey) {
-          const choice = await vscode.window.showWarningMessage(
-            'Refactoring analysis requires signing in to Jokalala (or setting an API key).',
-            'Sign In'
-          )
-          if (choice === 'Sign In') {
-            await authService.signIn()
-          }
+        if (!(await ensureCloudAuthOrPrompt('Refactoring analysis'))) {
           return
         }
 
@@ -704,6 +706,10 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       'jokalala.scanDependencies',
       async () => {
+        if (!(await ensureCloudAuthOrPrompt('Dependency (SCA) scan'))) {
+          return
+        }
+
         scaTreeProvider.setLoading(true)
 
         try {
@@ -1218,6 +1224,27 @@ async function analyzeDocument(
   )
 
   resetStatusBar()
+}
+
+/**
+ * Checks sign-in/API-key auth before a cloud-only command that has no
+ * local fallback (Refactoring, CVE lookup, SCA). Shows an actionable
+ * warning with a "Sign In" button and returns false if not authenticated,
+ * instead of letting the command silently send an unauthenticated request.
+ */
+async function ensureCloudAuthOrPrompt(featureName: string): Promise<boolean> {
+  const hasApiKey = Boolean((await securityService.getApiKeyWithFallback())?.trim())
+  if (authService.isAuthenticated || hasApiKey) {
+    return true
+  }
+  const choice = await vscode.window.showWarningMessage(
+    `${featureName} requires signing in to Jokalala (or setting an API key).`,
+    'Sign In'
+  )
+  if (choice === 'Sign In') {
+    await authService.signIn()
+  }
+  return false
 }
 
 const SEVERITY_RANK: Record<string, number> = {

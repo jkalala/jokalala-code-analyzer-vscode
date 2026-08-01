@@ -6,8 +6,10 @@
  */
 
 import * as vscode from 'vscode'
+import { AuthService } from './auth-service'
 import { ConfigurationService } from './configuration-service'
 import { Logger } from './logger'
+import { SecurityService } from './security-service'
 
 // =============================================================================
 // Types
@@ -89,9 +91,42 @@ export class SCAService {
   private logger: Logger
   private lastResult: SCAScanResult | null = null
 
-  constructor(configService: ConfigurationService, logger: Logger) {
+  constructor(
+    configService: ConfigurationService,
+    logger: Logger,
+    private readonly authService?: AuthService,
+    private readonly securityService?: SecurityService
+  ) {
     this.configService = configService
     this.logger = logger
+  }
+
+  /**
+   * Build auth headers the same way code-analysis-service.ts does: prefer
+   * the Sign-In JWT/persistent API key (AuthService), then SecretStorage,
+   * then the deprecated plaintext `jokalala.apiKey` setting as a last
+   * resort. Previously this service sent NO Authorization header at all,
+   * under any circumstances — every SCA scan and SBOM export was
+   * unauthenticated regardless of sign-in state or settings.
+   */
+  private async buildAuthHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'User-Agent': 'Jokalala-VSCode-Extension',
+    }
+    const fromAuth = this.authService?.getAuthHeaders()
+    if (fromAuth?.Authorization) {
+      Object.assign(headers, fromAuth)
+      return headers
+    }
+    const settings = this.configService.getSettings()
+    const apiKey =
+      (await this.securityService?.getApiKeyWithFallback()) ??
+      settings.apiKey?.trim()
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`
+    }
+    return headers
   }
 
   /**
@@ -334,10 +369,7 @@ export class SCAService {
 
     const response = await fetch(apiEndpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Jokalala-VSCode-Extension',
-      },
+      headers: await this.buildAuthHeaders(),
       body: JSON.stringify({
         files,
         options: {
@@ -419,10 +451,7 @@ export class SCAService {
 
     const response = await fetch(apiEndpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Jokalala-VSCode-Extension',
-      },
+      headers: await this.buildAuthHeaders(),
       body: JSON.stringify({
         files,
         sbomOnly: true,
