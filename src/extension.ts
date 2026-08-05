@@ -33,6 +33,7 @@ import { RefactoringService, RefactoringIssue } from './services/refactoring-ser
 import { SCAService, SCAVulnerability } from './services/sca-service'
 import { ContainerIaCService, ContainerIaCIssue, ScanType } from './services/container-iac-service'
 import { userFeedbackService } from './services/user-feedback-service'
+import { IdeBridgeService } from './services/ide-bridge'
 import { qualityGate } from './utils/quality-gate'
 import { falsePositiveDetector } from './utils/false-positive-detector'
 import { intelligencePrioritizer } from './utils/intelligence-prioritizer'
@@ -54,6 +55,7 @@ let scaService: SCAService
 let containerIaCTreeProvider: ContainerIaCTreeProvider
 let containerIaCService: ContainerIaCService
 let pluginsTreeProvider: PluginsTreeProvider
+let ideBridgeService: IdeBridgeService
 let logger: Logger
 let statusBarItem: vscode.StatusBarItem
 
@@ -66,14 +68,34 @@ export async function activate(context: vscode.ExtensionContext) {
     authService = new AuthService(context)
     await authService.initialize()
 
-    // Register URI handler for VS Code deep-link callback
-    // vscode://jokalala.code-analyzer/auth?token=<jwt>
+    // Register URI handler for VS Code deep-link callbacks:
+    //   vscode://jokalala.code-analyzer/auth?token=<jwt>
+    //   vscode://jokalala.code-analyzer/apply-patch?proposalId=<id>   (Dev Chat Accept)
+    //   vscode://jokalala.code-analyzer/hydrate?path=<relative path>  (Dev Chat Hydrate)
     context.subscriptions.push(
       vscode.window.registerUriHandler({
         handleUri(uri: vscode.Uri) {
-          if (uri.path === '/auth') {
+          const path = (uri.path || '').replace(/^\//, '')
+          const params = new URLSearchParams(uri.query)
+
+          if (path === 'auth' || path.endsWith('/auth')) {
             authService.handleAuthCallback(uri)
+            return
           }
+
+          if (path === 'apply-patch' || path.endsWith('apply-patch')) {
+            const proposalId = params.get('proposalId') || ''
+            void vscode.commands.executeCommand('jokalala.applyProposal', proposalId)
+            return
+          }
+
+          if (path === 'hydrate' || path.endsWith('hydrate')) {
+            const filePath = params.get('path') || ''
+            void vscode.commands.executeCommand('jokalala.hydrateFile', filePath)
+            return
+          }
+
+          vscode.window.showWarningMessage(`Unknown Jokalala URI path: ${uri.path}`)
         },
       })
     )
@@ -144,6 +166,7 @@ export async function activate(context: vscode.ExtensionContext) {
     containerIaCTreeProvider = new ContainerIaCTreeProvider()
     containerIaCService = new ContainerIaCService(configurationService, logger)
     pluginsTreeProvider = new PluginsTreeProvider()
+    ideBridgeService = new IdeBridgeService(configurationService, authService, securityService, logger)
 
     await ensurePersistentIdentifiers(context)
 
@@ -302,6 +325,88 @@ export async function activate(context: vscode.ExtensionContext) {
         )
       }
     )
+  )
+
+  // Register IDE bridge commands (Dev Chat Accept / Hydrate — see ide-bridge.ts).
+  // Invoked via the vscode:// URI handler above; also safe to call directly.
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'jokalala.applyProposal',
+      async (proposalId: string) => {
+        if (!(await ensureCloudAuthOrPrompt('Applying a Dev Chat patch'))) return
+        try {
+          const proposal = await ideBridgeService.fetchDiffProposal(proposalId)
+          const result = await ideBridgeService.applyProposalDiff(proposal.diff, {
+            summary: proposal.summary,
+          })
+          if (result.applied.length) {
+            vscode.window.showInformationMessage(
+              `Jokalala: applied ${result.applied.length} file(s)` +
+                (result.failed.length ? ` — ${result.failed.length} failed` : '')
+            )
+            if (result.failed.length) {
+              logger.warn('Patch partially applied', { failed: result.failed })
+            }
+          } else if (result.failed[0] !== 'cancelled') {
+            vscode.window.showWarningMessage(
+              `Jokalala: could not apply patch — ${result.failed.join('; ')}`
+            )
+          }
+        } catch (error) {
+          logger.error('Apply proposal failed', error as Error)
+          vscode.window.showErrorMessage(
+            `Jokalala: ${error instanceof Error ? error.message : String(error)}`
+          )
+        }
+      }
+    )
+  )
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'jokalala.hydrateFile',
+      async (filePath: string) => {
+        if (!(await ensureCloudAuthOrPrompt('Hydrating a file into Dev Chat'))) return
+        try {
+          const rel = await ideBridgeService.hydrateWorkspaceFile(filePath)
+          vscode.window.showInformationMessage(`Jokalala: hydrated ${rel} into Dev Chat`)
+        } catch (error) {
+          logger.error('Hydrate file failed', error as Error)
+          vscode.window.showErrorMessage(
+            `Jokalala: ${error instanceof Error ? error.message : String(error)}`
+          )
+        }
+      }
+    )
+  )
+
+  // Opt-in delta snapshot sync on save — keeps the Dev Chat cloud snapshot
+  // aligned with what's actually on disk so remediate_finding/Accept see
+  // fresh content instead of a stale scan-time snapshot. Off by default.
+  const syncSaved = debounce((doc: vscode.TextDocument) => {
+    void (async () => {
+      const cfg = vscode.workspace.getConfiguration('jokalala')
+      if (!cfg.get<boolean>('ideBridge.deltaSync', false)) return
+      if (!ideBridgeService.shouldDeltaSyncDocument(doc)) return
+      try {
+        const rel = ideBridgeService.relativePathForDoc(doc)
+        await ideBridgeService.postIndexDelta({
+          path: rel,
+          content: doc.getText(),
+          language: doc.languageId,
+          op: 'upsert',
+        })
+        logger.debug(`Delta synced ${rel}`)
+      } catch (error) {
+        logger.warn(
+          `Delta sync failed: ${error instanceof Error ? error.message : String(error)}`
+        )
+      }
+    })()
+  }, 800)
+
+  context.subscriptions.push(
+    vscode.workspace.onDidSaveTextDocument(doc => syncSaved(doc))
   )
 
   // Register CVE-related commands

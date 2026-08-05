@@ -31,6 +31,7 @@ import {
 } from '../utils/secrets-prescreener'
 import { AuditEvent } from './audit-service'
 import { AuthService } from './auth-service'
+import { buildAuthHeaders } from './auth-headers'
 import { ConfigurationService } from './configuration-service'
 import { Logger } from './logger'
 import { SecurityService } from './security-service'
@@ -103,21 +104,11 @@ export class CodeAnalysisService implements ICodeAnalysisService {
    * checked in SecretStorage first, then the (deprecated) plaintext setting.
    */
   private async buildAuthHeaders(): Promise<Record<string, string>> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
-    const fromAuth = this.authService?.getAuthHeaders()
-    if (fromAuth?.Authorization) {
-      Object.assign(headers, fromAuth)
-      return headers
-    }
-    const apiKey =
-      (await this.securityService?.getApiKeyWithFallback()) ??
-      this.settings.apiKey?.trim()
-    if (apiKey) {
-      headers.Authorization = `Bearer ${apiKey}`
-    }
-    return headers
+    return buildAuthHeaders(
+      this.authService,
+      this.securityService,
+      this.settings.apiKey
+    )
   }
 
   /**

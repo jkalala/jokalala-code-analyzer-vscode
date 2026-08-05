@@ -1,3 +1,21 @@
+## [2.5.0] - 2026-08-04
+
+### Added
+
+- **Dev Chat IDE bridge.** The web app's Dev Chat "Accept" button (`vscode://jokalala.jokalala-code-analysis/apply-patch?proposalId=…`) previously opened this extension but did nothing — the URI handler only recognized `/auth`, so Accept silently no-opped for every real installed user while only working against an unreleased development build. The handler now also recognizes `apply-patch` and `hydrate`, wired to two new commands: `jokalala.applyProposal` (fetches the proposal, previews it with `vscode.diff`, and applies it via `WorkspaceEdit` only after an explicit "Apply" confirmation — never writes without that confirmation) and `jokalala.hydrateFile` (pushes a local file into the Dev Chat cloud snapshot on demand).
+- **Multi-root workspace support for the IDE bridge.** Unlike the reference implementation this was backported from, `applyProposalDiff`/`hydrateWorkspaceFile` resolve the correct workspace folder instead of always assuming `workspaceFolders[0]`, prompting the user to choose when a path doesn't disambiguate.
+- **Opt-in delta sync on save** (`jokalala.ideBridge.deltaSync`, default `false`) — keeps the Dev Chat cloud snapshot aligned with what's actually on disk, so `remediate_finding`/Accept see fresh content instead of a stale scan-time snapshot.
+- Shared `buildAuthHeaders` helper (`services/auth-headers.ts`) — `CodeAnalysisService` and the new `IdeBridgeService` now share one auth-header implementation instead of each carrying its own copy, which is exactly the kind of duplication that caused the 2.4.4 regression (see below).
+
+### Fixed
+
+- **`applyHunksToContent` could silently overwrite the wrong lines** when a file changed since a diff was generated but the net line count at the hunk's claimed position happened to stay the same — the context check only compared line count, never content. Now verifies the actual text (leading/trailing-whitespace tolerant, to stay compatible with diff-builder.ts's indexOf fallback which trims indentation off some hunks) before trusting the claimed line number, falling back to a content search otherwise. Caught by the new unit test suite added alongside this backport, then re-verified against the web app's own SQLi/XSS remediation fixtures to make sure the fix didn't regress a real caller.
+- **`shouldDeltaSyncDocument`'s "outside workspace" guard never actually fired** — it checked `asRelativePath(...).startsWith('..')`, but VS Code's `asRelativePath` returns the path unchanged (not `../`-prefixed) for paths outside the workspace. Replaced with `vscode.workspace.getWorkspaceFolder(uri)`.
+
+### Not included in this release
+
+- The reference implementation's "local verify after apply" (run an allowlisted `pnpm test`/`pnpm lint` after a patch, optionally feeding failures back to Dev Chat) was intentionally left out of this backport. It's a larger, separate security-review surface (shell command execution, even allowlisted) than the apply-patch/hydrate flow above, and is deferred to its own change.
+
 ## [2.4.5] - 2026-08-01
 
 ### Security
