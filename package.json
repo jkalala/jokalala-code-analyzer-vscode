@@ -2,7 +2,7 @@
   "name": "jokalala-code-analysis",
   "displayName": "Jokalala Code Analyzer",
   "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 10+ languages.",
-  "version": "2.4.5",
+  "version": "2.5.0",
   "publisher": "jokalala",
   "author": {
     "name": "Jokalala Team",
@@ -114,6 +114,18 @@
         "command": "jokalala.clearApiKey",
         "title": "Jokalala: Clear API Key",
         "icon": "$(trash)",
+        "category": "Jokalala"
+      },
+      {
+        "command": "jokalala.applyProposal",
+        "title": "Jokalala: Apply Dev Chat Patch",
+        "icon": "$(diff)",
+        "category": "Jokalala"
+      },
+      {
+        "command": "jokalala.hydrateFile",
+        "title": "Jokalala: Hydrate File into Dev Chat",
+        "icon": "$(cloud-upload)",
         "category": "Jokalala"
       },
       {
@@ -514,6 +526,11 @@
           "default": "",
           "description": "API key for authentication (optional)",
           "deprecationMessage": "This setting is deprecated. Use the 'Jokalala: Set API Key' command instead, which stores your key securely using VS Code's SecretStorage."
+        },
+        "jokalala.ideBridge.deltaSync": {
+          "type": "boolean",
+          "default": false,
+          "description": "On save, push the file's content into the Dev Chat cloud snapshot so remediate_finding/Accept see fresh content instead of a stale scan-time snapshot. Off by default — enable per-workspace if you use Dev Chat remediation regularly."
         },
         "jokalala.analysisMode": {
           "type": "string",
