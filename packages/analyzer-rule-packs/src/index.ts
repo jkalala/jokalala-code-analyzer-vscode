@@ -20,20 +20,30 @@ const secretsJson = require('../packs/jokalala.secrets.json') as RulePackManifes
 const patternsJson = require('../packs/jokalala.patterns.json') as RulePackManifest
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const javascriptJson = require('../packs/jokalala.javascript.json') as RulePackManifest
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pythonJson = require('../packs/jokalala.python.json') as RulePackManifest
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const javaJson = require('../packs/jokalala.java.json') as RulePackManifest
 
 export const BUILTIN_PACK_MANIFESTS: Record<string, RulePackManifest> = {
   'jokalala.secrets': secretsJson,
   'jokalala.patterns': patternsJson,
   'jokalala.javascript': javascriptJson,
+  'jokalala.python': pythonJson,
+  'jokalala.java': javaJson,
 }
 
 /**
- * Precision profile (default IDE Tier-1): secrets + JS/TS high-signal packs.
- * Omits noisy Semgrep-lite `jokalala.patterns` — opt in via full profile.
+ * Precision profile (default IDE Tier-1): secrets + language high-signal
+ * packs. Language-scoped rules only fire for their own language, so the
+ * python/java packs are inert on JS files and vice versa. Omits noisy
+ * Semgrep-lite `jokalala.patterns` — opt in via full profile.
  */
 export const DEFAULT_TIER1_PACK_IDS = [
   'jokalala.secrets',
   'jokalala.javascript',
+  'jokalala.python',
+  'jokalala.java',
 ] as const
 
 /** Full local corpus including Semgrep-lite patterns (parity / deep local). */
@@ -41,6 +51,8 @@ export const FULL_TIER1_PACK_IDS = [
   'jokalala.secrets',
   'jokalala.patterns',
   'jokalala.javascript',
+  'jokalala.python',
+  'jokalala.java',
 ] as const
 
 let cachedDefaultPacks: LoadedRulePack[] | null = null

@@ -20,6 +20,8 @@ scripts/**
 dist/**
 !dist/extension.js
 !dist/plugin-worker.js
+# Tree-sitter runtime + Python/Java grammars (syntax precision layer)
+!dist/wasm/**
 
 # Dependencies are bundled
 node_modules/**

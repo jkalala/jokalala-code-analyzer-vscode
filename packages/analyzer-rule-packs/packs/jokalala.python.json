@@ -1,0 +1,353 @@
+{
+  "id": "jokalala.python",
+  "name": "Jokalala Python Pack",
+  "version": "1.0.0",
+  "description": "High-signal Python security rules (Tier-1 surface engine)",
+  "license": "MIT",
+  "rules": [
+    {
+      "id": "py-eval-call",
+      "cweId": "CWE-95",
+      "name": "eval() call",
+      "category": "injection",
+      "severity": "critical",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?<![\\w.])eval\\s*\\(",
+          "flags": "g"
+        },
+        {
+          "type": "pattern-not",
+          "pattern": {
+            "type": "regex",
+            "value": "ast\\.literal_eval|model\\.eval\\(\\)",
+            "flags": "g"
+          }
+        }
+      ],
+      "message": "eval() executes arbitrary Python expressions",
+      "recommendation": "Use ast.literal_eval for data, or restructure to avoid eval",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "py-exec-call",
+      "cweId": "CWE-95",
+      "name": "exec() call",
+      "category": "injection",
+      "severity": "critical",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?<![\\w.])exec\\s*\\(",
+          "flags": "g"
+        }
+      ],
+      "message": "exec() executes arbitrary Python code",
+      "recommendation": "Restructure to dispatch over an allowlisted set of operations",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "py-pickle-load",
+      "cweId": "CWE-502",
+      "name": "pickle deserialization",
+      "category": "deserialization",
+      "severity": "high",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "pickle\\.loads?\\s*\\(|cPickle\\.loads?\\s*\\(",
+          "flags": "g"
+        }
+      ],
+      "message": "Unpickling untrusted data executes arbitrary code",
+      "recommendation": "Use JSON or another data-only format for untrusted input",
+      "owaspCategory": "A08:2021 - Software and Data Integrity Failures"
+    },
+    {
+      "id": "py-yaml-unsafe-load",
+      "cweId": "CWE-502",
+      "name": "yaml.load without a safe Loader",
+      "category": "deserialization",
+      "severity": "high",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "yaml\\.load\\s*\\(",
+          "flags": "g"
+        },
+        {
+          "type": "pattern-not",
+          "pattern": {
+            "type": "regex",
+            "value": "Loader\\s*=\\s*(?:yaml\\.)?(?:Safe|Full)Loader|safe_load",
+            "flags": "g"
+          }
+        }
+      ],
+      "message": "yaml.load can instantiate arbitrary Python objects",
+      "recommendation": "Use yaml.safe_load, or pass Loader=yaml.SafeLoader",
+      "owaspCategory": "A08:2021 - Software and Data Integrity Failures"
+    },
+    {
+      "id": "py-subprocess-shell-true",
+      "cweId": "CWE-78",
+      "name": "subprocess with shell=True",
+      "category": "injection",
+      "severity": "critical",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "subprocess\\.(?:call|run|Popen|check_output|check_call)\\s*\\([^\\n]*shell\\s*=\\s*True",
+          "flags": "g"
+        }
+      ],
+      "message": "shell=True routes the command through a shell, enabling injection",
+      "recommendation": "Pass an argument list with shell=False",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "py-os-system-call",
+      "cweId": "CWE-78",
+      "name": "os.system/os.popen call",
+      "category": "injection",
+      "severity": "high",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "os\\.(?:system|popen)\\s*\\(",
+          "flags": "g"
+        }
+      ],
+      "message": "os.system invokes a shell with the given string",
+      "recommendation": "Use subprocess.run([...], shell=False)",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "py-sql-fstring",
+      "cweId": "CWE-89",
+      "name": "SQL executed from an f-string",
+      "category": "injection",
+      "severity": "critical",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?:execute|executemany|executescript)\\s*\\(\\s*f['\\\"]",
+          "flags": "g"
+        }
+      ],
+      "message": "f-string interpolation into SQL enables injection",
+      "recommendation": "Use parameter placeholders: execute('... WHERE id = %s', (id,))",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "py-sql-format-concat",
+      "cweId": "CWE-89",
+      "name": "SQL built with % / + / .format()",
+      "category": "injection",
+      "severity": "high",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?:execute|executemany)\\s*\\(\\s*['\\\"][^'\\\"\\n]*['\\\"]\\s*(?:%\\s*[^,)\\s]|\\+|\\.\\s*format\\s*\\()",
+          "flags": "g"
+        }
+      ],
+      "message": "String-building a SQL query enables injection",
+      "recommendation": "Use parameter placeholders and a params tuple",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "py-requests-verify-false",
+      "cweId": "CWE-295",
+      "name": "TLS verification disabled (verify=False)",
+      "category": "transport",
+      "severity": "high",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "\\bverify\\s*=\\s*False",
+          "flags": "g"
+        }
+      ],
+      "message": "verify=False disables certificate validation",
+      "recommendation": "Keep verification on; pin an internal CA bundle if needed",
+      "owaspCategory": "A05:2021 - Security Misconfiguration"
+    },
+    {
+      "id": "py-debug-enabled",
+      "cweId": "CWE-489",
+      "name": "Debug mode enabled",
+      "category": "configuration",
+      "severity": "medium",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "\\bDEBUG\\s*=\\s*True\\b|\\bdebug\\s*=\\s*True\\b",
+          "flags": "g"
+        }
+      ],
+      "message": "Debug mode exposes stack traces and consoles in production",
+      "recommendation": "Disable debug in production via configuration",
+      "owaspCategory": "A05:2021 - Security Misconfiguration"
+    },
+    {
+      "id": "py-tempfile-mktemp",
+      "cweId": "CWE-377",
+      "name": "Insecure temporary file (mktemp)",
+      "category": "filesystem",
+      "severity": "medium",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "tempfile\\.mktemp\\s*\\(",
+          "flags": "g"
+        }
+      ],
+      "message": "mktemp is racy: the name can be claimed before you open it",
+      "recommendation": "Use tempfile.mkstemp or NamedTemporaryFile",
+      "owaspCategory": "A01:2021 - Broken Access Control"
+    },
+    {
+      "id": "py-random-for-secret",
+      "cweId": "CWE-338",
+      "name": "random module used for a security value",
+      "category": "cryptography",
+      "severity": "high",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?:token|secret|password|nonce|otp|session)\\w*\\s*=[^\\n]*\\brandom\\.(?:random|randint|choice|randrange|getrandbits)\\s*\\(",
+          "flags": "gi"
+        }
+      ],
+      "message": "The random module is predictable; unsuitable for secrets",
+      "recommendation": "Use the secrets module (secrets.token_hex, token_urlsafe)",
+      "owaspCategory": "A02:2021 - Cryptographic Failures"
+    },
+    {
+      "id": "py-weak-hash",
+      "cweId": "CWE-328",
+      "name": "Weak hash algorithm (MD5/SHA-1)",
+      "category": "cryptography",
+      "severity": "medium",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "hashlib\\.(?:md5|sha1)\\s*\\(",
+          "flags": "g"
+        },
+        {
+          "type": "pattern-not",
+          "pattern": {
+            "type": "regex",
+            "value": "usedforsecurity\\s*=\\s*False",
+            "flags": "g"
+          }
+        }
+      ],
+      "message": "MD5/SHA-1 are broken for security purposes",
+      "recommendation": "Use hashlib.sha256; for passwords use bcrypt/scrypt/argon2",
+      "owaspCategory": "A02:2021 - Cryptographic Failures"
+    },
+    {
+      "id": "py-paramiko-autoadd",
+      "cweId": "CWE-295",
+      "name": "SSH host key auto-accept (AutoAddPolicy)",
+      "category": "transport",
+      "severity": "medium",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "AutoAddPolicy\\s*\\(\\s*\\)",
+          "flags": "g"
+        }
+      ],
+      "message": "AutoAddPolicy accepts any SSH host key, enabling MITM",
+      "recommendation": "Load known_hosts and use RejectPolicy/WarningPolicy",
+      "owaspCategory": "A05:2021 - Security Misconfiguration"
+    },
+    {
+      "id": "py-jinja2-autoescape-off",
+      "cweId": "CWE-79",
+      "name": "Jinja2 autoescape disabled",
+      "category": "xss",
+      "severity": "high",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "autoescape\\s*=\\s*False",
+          "flags": "g"
+        }
+      ],
+      "message": "Disabling autoescape renders user data as raw HTML",
+      "recommendation": "Keep autoescape=True (or select_autoescape())",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "py-django-raw-fstring",
+      "cweId": "CWE-89",
+      "name": "Django .raw() with an f-string",
+      "category": "injection",
+      "severity": "high",
+      "languages": [
+        "python"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "\\.raw\\s*\\(\\s*f['\\\"]",
+          "flags": "g"
+        }
+      ],
+      "message": "f-string interpolation into raw SQL enables injection",
+      "recommendation": "Pass params: Model.objects.raw('... WHERE id = %s', [id])",
+      "owaspCategory": "A03:2021 - Injection"
+    }
+  ]
+}

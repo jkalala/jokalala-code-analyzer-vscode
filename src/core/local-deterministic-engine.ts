@@ -26,6 +26,10 @@ import {
   type OfflineAnalysisOptions,
   type OfflineAnalysisResult,
 } from './security-types'
+import { runTaintAnalysis, type TaintFinding } from './taint-analysis'
+import { buildSuppressionIndex } from './suppression-directives'
+import { fingerprintIssues } from './baseline'
+import { getSyntaxFacts } from './syntax-service'
 
 export type { SecurityIssue, OfflineAnalysisOptions, OfflineAnalysisResult }
 export { Severity }
@@ -101,6 +105,110 @@ function packFindingToIssue(f: PackFinding, index: number): SecurityIssue {
       engine: f.engine,
     },
   }
+}
+
+/**
+ * Taint findings carry evidence-based confidence and a full source→sink path;
+ * they outrank the single-node pack findings for the same CWE+line, which are
+ * dropped in favor of these (see analyze()).
+ */
+function taintFindingToIssue(f: TaintFinding, index: number): SecurityIssue {
+  return {
+    id: `local-taint-${f.ruleId}-${f.line}-${index}`,
+    ruleId: f.ruleId,
+    title: f.name,
+    description: f.message,
+    severity: toSeverity(f.severity),
+    category: f.category,
+    cwe: [f.cweId],
+    owasp: [f.owaspCategory],
+    line: f.line,
+    column: f.column,
+    endLine: f.endLine,
+    endColumn: f.endColumn,
+    codeSnippet: f.sinkSnippet,
+    suggestion: f.recommendation,
+    confidence: f.confidence,
+    falsePositiveLikelihood: Math.round((1 - f.confidence) * 100) / 100,
+    references: [
+      `https://cwe.mitre.org/data/definitions/${f.cweId.replace('CWE-', '')}.html`,
+    ],
+    message: f.message,
+    metadata: {
+      source: 'local-taint',
+      engine: 'taint',
+      engineTier: 1,
+      taintSource: f.source,
+      taintSteps: f.steps,
+      partialSanitizers: f.partialSanitizers,
+    },
+  }
+}
+
+const TEST_PATH_RE = /\b(?:__tests__|\.test\.|\.spec\.|\/tests?\/|\\tests?\\)/i
+
+/**
+ * Reported in OfflineAnalysisResult.metadata and consumed by telemetry.
+ * Read from the manifest so it cannot drift from the published version the
+ * way the previously hardcoded '2.4.1' did.
+ */
+const ENGINE_VERSION: string = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return (require('../../package.json') as { version?: string }).version || '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+})()
+
+/** Languages with a tree-sitter grammar backing the syntax precision layer. */
+const SYNTAX_LANGS = new Set(['python', 'java'])
+
+/** Python rules eligible for the static-string-argument severity downgrade. */
+const PY_STATIC_ARG_RULES: Record<string, string[]> = {
+  'py-eval-call': ['eval'],
+  'py-exec-call': ['exec'],
+  'py-os-system-call': ['os.system', 'os.popen'],
+}
+
+/**
+ * Syntax-aware refinement for regex-pack findings (no-op until the WASM
+ * syntax service has initialized): drops matches inside comments — dead
+ * code can't execute, though commented-out secrets are still real leaks,
+ * so the secrets pack is exempt — and mirrors the JS static-argument
+ * downgrade for Python eval/exec/os.system with literal-only arguments.
+ */
+function refineWithSyntaxFacts(
+  code: string,
+  lang: string,
+  findings: PackFinding[]
+): PackFinding[] {
+  if (findings.length === 0) return findings
+  const facts = getSyntaxFacts(code, lang)
+  if (!facts) return findings
+
+  const out: PackFinding[] = []
+  for (const f of findings) {
+    const offset = offsetFromLineCol(code, f.line, f.column)
+    if (f.packId !== 'jokalala.secrets' && facts.isInComment(offset)) continue
+
+    const callees = PY_STATIC_ARG_RULES[f.ruleId]
+    if (callees && facts.language === 'python') {
+      const call = facts.pythonCalls.find(
+        (c) => c.startIndex <= offset && offset < c.endIndex && callees.includes(c.callee)
+      )
+      if (call?.staticStringArgument) {
+        out.push({
+          ...f,
+          severity: 'low',
+          message: `${f.message} (argument is a static string literal — no dynamic input detected; still avoid this API where possible)`,
+        })
+        continue
+      }
+    }
+    out.push(f)
+  }
+  return out
 }
 
 function locOf(node: Node): { line: number; column: number; endLine?: number; endColumn?: number } {
@@ -186,13 +294,38 @@ function calleeName(node: Node): string | null {
   return null
 }
 
+/**
+ * Parse once per file; both the pack AST visitors and the taint pass run on
+ * the same tree. Returns null on parse failure (zero-noise: no regex fallback
+ * for AST-tier analyses).
+ */
+function parseJsAst(code: string, language: string): ReturnType<typeof parser.parse> | null {
+  const isTs = language === 'typescript' || language === 'tsx' || language === 'ts'
+  try {
+    return parser.parse(code, {
+      sourceType: 'unambiguous',
+      errorRecovery: true,
+      plugins: [
+        'jsx',
+        ...(isTs ? (['typescript' as const]) : []),
+        'classProperties',
+        'optionalChaining',
+        'nullishCoalescingOperator',
+        'dynamicImport',
+        'topLevelAwait',
+      ],
+    })
+  } catch {
+    return null
+  }
+}
+
 function runAstVisitors(
+  ast: ReturnType<typeof parser.parse>,
   code: string,
-  language: string,
   packs: LoadedRulePack[]
 ): PackFinding[] {
   const findings: PackFinding[] = []
-  const isTs = language === 'typescript' || language === 'tsx' || language === 'ts'
 
   const visitorRules: Array<{
     rule: RulePackRule
@@ -215,26 +348,6 @@ function runAstVisitors(
   }
 
   if (visitorRules.length === 0) return findings
-
-  let ast
-  try {
-    ast = parser.parse(code, {
-      sourceType: 'unambiguous',
-      errorRecovery: true,
-      plugins: [
-        'jsx',
-        ...(isTs ? (['typescript' as const]) : []),
-        'classProperties',
-        'optionalChaining',
-        'nullishCoalescingOperator',
-        'dynamicImport',
-        'topLevelAwait',
-      ],
-    })
-  } catch {
-    // Zero-noise: skip AST rules when parse fails — do not fall back to noisy regex
-    return findings
-  }
 
   const byVisitor = new Map<string, typeof visitorRules>()
   for (const vr of visitorRules) {
@@ -366,26 +479,80 @@ export class LocalDeterministicEngine {
       (options.packProfile ? loadTier1Packs(options.packProfile) : this.packs)
 
     // Surface regex (non-AST rules only) — suppressions + dedupe applied later
-    const surface = analyzeWithPacks(code, lang, {
+    let surface = analyzeWithPacks(code, lang, {
       packs,
       suppressNoise: false,
       dedupe: false,
     })
+    if (SYNTAX_LANGS.has(lang)) {
+      surface = refineWithSyntaxFacts(code, lang, surface)
+    }
 
     // JS/TS AST — no regex fallback when parse fails (zero-noise policy)
     let astFindings: PackFinding[] = []
+    let taintFindings: TaintFinding[] = []
     if (JS_LANGS.has(lang) || JS_LANGS.has(language.toLowerCase())) {
-      astFindings = runAstVisitors(code, lang, packs)
+      const ast = parseJsAst(code, lang)
+      if (ast) {
+        astFindings = runAstVisitors(ast, code, packs)
+        if (options.enableTaintAnalysis !== false) {
+          taintFindings = runTaintAnalysis(ast, code)
+        }
+      }
     }
 
-    const all = applySuppressions(
+    // Taint findings bypass the ±160-char safe-sink window (the taint pass
+    // models sanitizers precisely, so proximity heuristics would only hide
+    // real flows) but still respect the test-path suppression.
+    if (options.filePathHint && TEST_PATH_RE.test(options.filePathHint)) {
+      taintFindings = []
+    }
+
+    let all = applySuppressions(
       code,
       [...surface, ...astFindings],
       options.filePathHint
     )
-    const deduped = dedupeFindingsByCweLine(all)
 
-    let issues = deduped.map((f, i) => packFindingToIssue(f, i))
+    // Inline directives run BEFORE taint-wins dedupe so that suppressing a
+    // specific js-taint-* rule can still leave the broader pack finding
+    // visible; a bare `jokalala-ignore` clears the line entirely.
+    let suppressedCount = 0
+    if (options.respectInlineSuppressions !== false) {
+      const directives = buildSuppressionIndex(code)
+      if (directives.directiveCount > 0) {
+        const before = all.length + taintFindings.length
+        all = all.filter((f) => !directives.isSuppressed(f.line, f.ruleId))
+        taintFindings = taintFindings.filter(
+          (f) => !directives.isSuppressed(f.line, f.ruleId)
+        )
+        suppressedCount = before - all.length - taintFindings.length
+      }
+    }
+
+    // A taint finding subsumes the single-node pack finding for the same
+    // CWE on the same line — it carries the full source→sink evidence.
+    const taintKeys = new Set(taintFindings.map((f) => `${f.cweId}:${f.line}`))
+    const deduped = dedupeFindingsByCweLine(all).filter(
+      (f) => !taintKeys.has(`${f.cweId || f.ruleId}:${f.line}`)
+    )
+
+    let issues = [
+      ...taintFindings.map((f, i) => taintFindingToIssue(f, i)),
+      ...deduped.map((f, i) => packFindingToIssue(f, i)),
+    ].sort((a, b) => a.line - b.line || a.column - b.column)
+
+    // Baseline: drop findings the team has already reviewed and accepted.
+    let baselinedCount = 0
+    if (options.baseline && options.baseline.size > 0 && options.filePathHint) {
+      const prints = fingerprintIssues(issues, options.filePathHint, code)
+      const kept: SecurityIssue[] = []
+      for (let i = 0; i < issues.length; i++) {
+        if (options.baseline.has(prints[i])) baselinedCount++
+        else kept.push(issues[i])
+      }
+      issues = kept
+    }
 
     if (options.disabledRules?.length) {
       const disabled = new Set(options.disabledRules)
@@ -429,9 +596,11 @@ export class LocalDeterministicEngine {
         analysisTime,
         linesAnalyzed: code.split('\n').length,
         coverage: 1,
+        suppressedCount,
+        baselinedCount,
       },
       metadata: {
-        version: '2.4.1',
+        version: ENGINE_VERSION,
         rulesVersion: packsMeta.map((p) => `${p.id}@${p.version}`).join(','),
         language: lang,
         isOffline: true,

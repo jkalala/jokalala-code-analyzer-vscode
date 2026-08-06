@@ -1,7 +1,7 @@
 {
   "id": "jokalala.javascript",
   "name": "Jokalala JavaScript/TypeScript Pack",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "JS/TS Tier-1 surface + AST seed rules aligned with cloud CWEs (XSS, SQLi, command injection)",
   "author": "Jokalala",
   "license": "MIT",
@@ -12,7 +12,10 @@
       "name": "innerHTML assignment",
       "category": "xss",
       "severity": "high",
-      "languages": ["javascript", "typescript"],
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
       "engine": "ast",
       "astVisitor": "innerHTML",
       "patterns": [
@@ -32,7 +35,10 @@
       "name": "React dangerouslySetInnerHTML",
       "category": "xss",
       "severity": "high",
-      "languages": ["javascript", "typescript"],
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
       "engine": "ast",
       "astVisitor": "dangerouslySetInnerHTML",
       "patterns": [
@@ -52,7 +58,10 @@
       "name": "eval() call",
       "category": "injection",
       "severity": "critical",
-      "languages": ["javascript", "typescript"],
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
       "engine": "ast",
       "astVisitor": "eval",
       "patterns": [
@@ -72,7 +81,10 @@
       "name": "child_process exec/execSync",
       "category": "injection",
       "severity": "critical",
-      "languages": ["javascript", "typescript"],
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
       "engine": "ast",
       "astVisitor": "childProcessExec",
       "patterns": [
@@ -97,7 +109,10 @@
       "name": "SQL-like string concatenation",
       "category": "injection",
       "severity": "high",
-      "languages": ["javascript", "typescript"],
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
       "patterns": [
         {
           "type": "regex",
@@ -115,7 +130,10 @@
       "name": "document.write",
       "category": "xss",
       "severity": "medium",
-      "languages": ["javascript", "typescript"],
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
       "patterns": [
         {
           "type": "regex",
@@ -133,7 +151,10 @@
       "name": "new Function()",
       "category": "injection",
       "severity": "high",
-      "languages": ["javascript", "typescript"],
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
       "engine": "ast",
       "astVisitor": "newFunction",
       "patterns": [
@@ -145,6 +166,434 @@
       ],
       "message": "new Function() executes arbitrary code",
       "recommendation": "Avoid dynamic Function constructors",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-weak-hash",
+      "cweId": "CWE-328",
+      "name": "Weak hash algorithm (MD5/SHA-1)",
+      "category": "cryptography",
+      "severity": "high",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "createHash\\s*\\(\\s*['\\\"](?:md5|sha1)['\\\"]",
+          "flags": "gi"
+        }
+      ],
+      "message": "MD5/SHA-1 are broken for security purposes",
+      "recommendation": "Use crypto.createHash('sha256') or stronger",
+      "owaspCategory": "A02:2021 - Cryptographic Failures"
+    },
+    {
+      "id": "js-insecure-random-token",
+      "cweId": "CWE-338",
+      "name": "Math.random() used for a security value",
+      "category": "cryptography",
+      "severity": "high",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?:token|secret|password|nonce|otp|sessionId|session_id|apiKey|api_key)\\w*\\s*[=:][^\\n]*Math\\.random\\s*\\(",
+          "flags": "gi"
+        }
+      ],
+      "message": "Math.random() is not cryptographically secure",
+      "recommendation": "Use crypto.randomBytes()/crypto.randomUUID() for security values",
+      "owaspCategory": "A02:2021 - Cryptographic Failures"
+    },
+    {
+      "id": "js-tls-reject-unauthorized",
+      "cweId": "CWE-295",
+      "name": "TLS certificate validation disabled",
+      "category": "transport",
+      "severity": "high",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "rejectUnauthorized\\s*:\\s*false|NODE_TLS_REJECT_UNAUTHORIZED[^\\n]{0,10}=\\s*['\\\"]?0",
+          "flags": "g"
+        }
+      ],
+      "message": "Disabling certificate validation allows man-in-the-middle attacks",
+      "recommendation": "Keep rejectUnauthorized: true; fix the certificate chain instead",
+      "owaspCategory": "A05:2021 - Security Misconfiguration"
+    },
+    {
+      "id": "js-child-process-shell-true",
+      "cweId": "CWE-78",
+      "name": "child_process with shell: true",
+      "category": "injection",
+      "severity": "medium",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "\\bshell\\s*:\\s*true\\b",
+          "flags": "g"
+        }
+      ],
+      "message": "shell: true routes arguments through a shell, enabling injection",
+      "recommendation": "Use spawn/execFile with an argument array and shell: false",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-insecure-cookie-flags",
+      "cweId": "CWE-1004",
+      "name": "Cookie set without httpOnly/secure",
+      "category": "session",
+      "severity": "medium",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?:cookie|Cookie)[^\\n]{0,80}(?:httpOnly|secure)\\s*:\\s*false",
+          "flags": "g"
+        }
+      ],
+      "message": "Cookies without httpOnly/secure are exposed to XSS and plaintext transport",
+      "recommendation": "Set httpOnly: true and secure: true on session cookies",
+      "owaspCategory": "A05:2021 - Security Misconfiguration"
+    },
+    {
+      "id": "js-cors-wildcard",
+      "cweId": "CWE-942",
+      "name": "CORS allows any origin",
+      "category": "cors",
+      "severity": "medium",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "Access-Control-Allow-Origin['\\\"]?\\s*[,:]\\s*['\\\"]\\*|\\borigin\\s*:\\s*['\\\"]\\*['\\\"]",
+          "flags": "g"
+        }
+      ],
+      "message": "Wildcard CORS origin exposes responses to any website",
+      "recommendation": "Allowlist specific trusted origins",
+      "owaspCategory": "A05:2021 - Security Misconfiguration"
+    },
+    {
+      "id": "js-postmessage-wildcard",
+      "cweId": "CWE-346",
+      "name": "postMessage with wildcard targetOrigin",
+      "category": "cors",
+      "severity": "medium",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "postMessage\\s*\\([^)]*,\\s*['\\\"]\\*['\\\"]\\s*\\)",
+          "flags": "g"
+        }
+      ],
+      "message": "postMessage('*') can leak data to any embedded/opening window",
+      "recommendation": "Pass the specific target origin instead of '*'",
+      "owaspCategory": "A01:2021 - Broken Access Control"
+    },
+    {
+      "id": "js-jwt-none-algorithm",
+      "cweId": "CWE-347",
+      "name": "JWT 'none' algorithm accepted",
+      "category": "auth",
+      "severity": "critical",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "algorithms?\\s*:\\s*\\[?[^\\]\\n]*['\\\"]none['\\\"]",
+          "flags": "gi"
+        }
+      ],
+      "message": "Accepting alg=none disables JWT signature verification entirely",
+      "recommendation": "Pin a strong algorithm (RS256/EdDSA) and reject 'none'",
+      "owaspCategory": "A07:2021 - Identification and Authentication Failures"
+    },
+    {
+      "id": "js-jwt-decode-no-verify",
+      "cweId": "CWE-347",
+      "name": "jwt.decode() without signature verification",
+      "category": "auth",
+      "severity": "low",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "\\bjwt\\.decode\\s*\\(",
+          "flags": "g"
+        }
+      ],
+      "message": "jwt.decode() does not verify the signature",
+      "recommendation": "Use jwt.verify() when the payload is trusted for any decision",
+      "owaspCategory": "A07:2021 - Identification and Authentication Failures"
+    },
+    {
+      "id": "js-vm-code-execution",
+      "cweId": "CWE-95",
+      "name": "vm module code execution",
+      "category": "injection",
+      "severity": "high",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "vm\\.(?:runInNewContext|runInThisContext|runInContext|compileFunction)\\s*\\(",
+          "flags": "g"
+        }
+      ],
+      "message": "The vm module is not a security sandbox; injected code escapes it",
+      "recommendation": "Never run untrusted code in vm; use a separate process/isolate",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-xxe-noent",
+      "cweId": "CWE-611",
+      "name": "XML parsing with external entities enabled",
+      "category": "xxe",
+      "severity": "high",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "noent\\s*:\\s*true",
+          "flags": "g"
+        }
+      ],
+      "message": "Enabling entity expansion allows XXE attacks",
+      "recommendation": "Parse XML with external entity expansion disabled",
+      "owaspCategory": "A05:2021 - Security Misconfiguration"
+    },
+    {
+      "id": "js-prototype-pollution-assign",
+      "cweId": "CWE-1321",
+      "name": "__proto__ assignment (prototype pollution)",
+      "category": "injection",
+      "severity": "high",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?:\\.__proto__|\\[['\\\"]__proto__['\\\"]\\])\\s*=[^=]",
+          "flags": "g"
+        }
+      ],
+      "message": "Assigning through __proto__ pollutes Object.prototype",
+      "recommendation": "Use Object.create(null) maps or block __proto__/constructor keys",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-timing-unsafe-compare",
+      "cweId": "CWE-208",
+      "name": "Timing-unsafe comparison of a signature/digest",
+      "category": "cryptography",
+      "severity": "low",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?:signature|hmac|digest)\\w*\\s*===?\\s*\\w",
+          "flags": "g"
+        },
+        {
+          "type": "pattern-not",
+          "pattern": {
+            "type": "regex",
+            "value": "===?\\s*(?:null|undefined|true|false)",
+            "flags": "g"
+          }
+        }
+      ],
+      "message": "String comparison of secrets leaks timing information",
+      "recommendation": "Use crypto.timingSafeEqual with equal-length buffers",
+      "owaspCategory": "A02:2021 - Cryptographic Failures"
+    },
+    {
+      "id": "js-insecure-http-request",
+      "cweId": "CWE-319",
+      "name": "Cleartext HTTP request",
+      "category": "transport",
+      "severity": "medium",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?:fetch|axios(?:\\.\\w+)?)\\s*\\(\\s*['\\\"]http://(?!localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0)",
+          "flags": "g"
+        }
+      ],
+      "message": "Data sent over http:// is readable and modifiable in transit",
+      "recommendation": "Use https:// for all non-local requests",
+      "owaspCategory": "A02:2021 - Cryptographic Failures"
+    },
+    {
+      "id": "js-dynamic-require",
+      "cweId": "CWE-95",
+      "name": "Dynamic require() of a variable path",
+      "category": "injection",
+      "severity": "low",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "\\brequire\\s*\\(\\s*[a-zA-Z_$][\\w$]*\\s*[)+]",
+          "flags": "g"
+        }
+      ],
+      "message": "Requiring a computed path can load attacker-chosen modules",
+      "recommendation": "Require literal paths, or allowlist the module names",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-settimeout-string",
+      "cweId": "CWE-95",
+      "name": "setTimeout/setInterval with a string argument",
+      "category": "injection",
+      "severity": "medium",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "set(?:Timeout|Interval)\\s*\\(\\s*['\\\"`]",
+          "flags": "g"
+        }
+      ],
+      "message": "String arguments to timers are evaluated like eval()",
+      "recommendation": "Pass a function instead of a code string",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "js-weak-cipher",
+      "cweId": "CWE-327",
+      "name": "Weak/legacy cipher or ECB mode",
+      "category": "cryptography",
+      "severity": "high",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "createCipheriv?\\s*\\(\\s*['\\\"](?:des(?:-ede3?)?(?:-cbc)?|rc4|rc2|aes-\\d+-ecb)",
+          "flags": "gi"
+        }
+      ],
+      "message": "DES/RC4 and ECB mode provide inadequate confidentiality",
+      "recommendation": "Use aes-256-gcm (authenticated encryption)",
+      "owaspCategory": "A02:2021 - Cryptographic Failures"
+    },
+    {
+      "id": "js-localstorage-sensitive",
+      "cweId": "CWE-922",
+      "name": "Sensitive value stored in localStorage",
+      "category": "data_exposure",
+      "severity": "medium",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "localStorage\\.setItem\\s*\\(\\s*['\\\"](?:token|jwt|password|secret|apikey|api_key|refresh_token)",
+          "flags": "gi"
+        }
+      ],
+      "message": "localStorage is readable by any XSS payload and persists on disk",
+      "recommendation": "Prefer httpOnly cookies or in-memory storage for tokens",
+      "owaspCategory": "A05:2021 - Security Misconfiguration"
+    },
+    {
+      "id": "js-electron-insecure",
+      "cweId": "CWE-94",
+      "name": "Insecure Electron webPreferences",
+      "category": "configuration",
+      "severity": "high",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "nodeIntegration\\s*:\\s*true|webSecurity\\s*:\\s*false|contextIsolation\\s*:\\s*false",
+          "flags": "g"
+        }
+      ],
+      "message": "These settings let renderer/remote content reach Node.js APIs",
+      "recommendation": "Keep nodeIntegration: false, contextIsolation: true, webSecurity: true",
+      "owaspCategory": "A05:2021 - Security Misconfiguration"
+    },
+    {
+      "id": "js-sql-template-literal",
+      "cweId": "CWE-89",
+      "name": "SQL built with template-literal interpolation",
+      "category": "injection",
+      "severity": "high",
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?:query|execute)\\s*\\(\\s*`[^`]*\\$\\{",
+          "flags": "g"
+        }
+      ],
+      "message": "Interpolating values into SQL template strings enables injection",
+      "recommendation": "Use parameter placeholders and a values array",
       "owaspCategory": "A03:2021 - Injection"
     }
   ]
