@@ -1,0 +1,209 @@
+{
+  "id": "jokalala.java",
+  "name": "Jokalala Java Pack",
+  "version": "1.0.0",
+  "description": "High-signal Java security rules (Tier-1 surface engine)",
+  "license": "MIT",
+  "rules": [
+    {
+      "id": "java-runtime-exec-concat",
+      "cweId": "CWE-78",
+      "name": "Runtime.exec with concatenated command",
+      "category": "injection",
+      "severity": "critical",
+      "languages": [
+        "java"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "Runtime\\.getRuntime\\s*\\(\\s*\\)\\s*\\.exec\\s*\\([^)]*\\+",
+          "flags": "g"
+        }
+      ],
+      "message": "Concatenating input into an exec command enables injection",
+      "recommendation": "Use ProcessBuilder with a fixed argument list; validate inputs",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "java-sql-concat",
+      "cweId": "CWE-89",
+      "name": "SQL executed with string concatenation",
+      "category": "injection",
+      "severity": "critical",
+      "languages": [
+        "java"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?:executeQuery|executeUpdate|execute|prepareStatement)\\s*\\(\\s*\\\"[^\\\"\\n]*\\\"\\s*\\+",
+          "flags": "g"
+        }
+      ],
+      "message": "Concatenating values into SQL enables injection",
+      "recommendation": "Use PreparedStatement with ? placeholders and setString/setInt",
+      "owaspCategory": "A03:2021 - Injection"
+    },
+    {
+      "id": "java-xxe-enabled",
+      "cweId": "CWE-611",
+      "name": "XML external entities explicitly enabled",
+      "category": "xxe",
+      "severity": "high",
+      "languages": [
+        "java"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "setFeature\\s*\\([^)]*external-(?:general|parameter)-entities[^)]*true|setExpandEntityReferences\\s*\\(\\s*true",
+          "flags": "g"
+        }
+      ],
+      "message": "Enabling external entity processing allows XXE attacks",
+      "recommendation": "Disable DTDs/external entities on the parser factory",
+      "owaspCategory": "A05:2021 - Security Misconfiguration"
+    },
+    {
+      "id": "java-object-deserialization",
+      "cweId": "CWE-502",
+      "name": "Java native deserialization",
+      "category": "deserialization",
+      "severity": "high",
+      "languages": [
+        "java"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "new\\s+ObjectInputStream\\s*\\(",
+          "flags": "g"
+        }
+      ],
+      "message": "Deserializing untrusted data can execute gadget chains",
+      "recommendation": "Avoid native serialization; use JSON with strict types or an ObjectInputFilter",
+      "owaspCategory": "A08:2021 - Software and Data Integrity Failures"
+    },
+    {
+      "id": "java-weak-digest",
+      "cweId": "CWE-328",
+      "name": "Weak MessageDigest (MD5/SHA-1)",
+      "category": "cryptography",
+      "severity": "high",
+      "languages": [
+        "java"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "MessageDigest\\.getInstance\\s*\\(\\s*\\\"(?:MD5|SHA-?1)\\\"",
+          "flags": "gi"
+        }
+      ],
+      "message": "MD5/SHA-1 are broken for security purposes",
+      "recommendation": "Use SHA-256 or stronger; for passwords use bcrypt/argon2",
+      "owaspCategory": "A02:2021 - Cryptographic Failures"
+    },
+    {
+      "id": "java-weak-cipher",
+      "cweId": "CWE-327",
+      "name": "Weak cipher or ECB mode",
+      "category": "cryptography",
+      "severity": "high",
+      "languages": [
+        "java"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "Cipher\\.getInstance\\s*\\(\\s*\\\"(?:DES|DESede|RC4|Blowfish|AES/ECB)",
+          "flags": "gi"
+        }
+      ],
+      "message": "DES/RC4/ECB provide inadequate confidentiality",
+      "recommendation": "Use AES/GCM/NoPadding with a random IV per message",
+      "owaspCategory": "A02:2021 - Cryptographic Failures"
+    },
+    {
+      "id": "java-insecure-random-token",
+      "cweId": "CWE-338",
+      "name": "java.util.Random used for a security value",
+      "category": "cryptography",
+      "severity": "high",
+      "languages": [
+        "java"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "(?:token|secret|password|otp|nonce|session)\\w*\\s*=[^\\n]*new\\s+Random\\s*\\(",
+          "flags": "gi"
+        }
+      ],
+      "message": "java.util.Random is predictable; unsuitable for secrets",
+      "recommendation": "Use SecureRandom for tokens and keys",
+      "owaspCategory": "A02:2021 - Cryptographic Failures"
+    },
+    {
+      "id": "java-trust-all-certs",
+      "cweId": "CWE-295",
+      "name": "Empty checkServerTrusted (trust-all TrustManager)",
+      "category": "transport",
+      "severity": "high",
+      "languages": [
+        "java"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "void\\s+checkServerTrusted[^{]*\\{\\s*\\}",
+          "flags": "g"
+        }
+      ],
+      "message": "An empty trust check accepts any certificate, enabling MITM",
+      "recommendation": "Use the platform trust store or pin specific certificates",
+      "owaspCategory": "A05:2021 - Security Misconfiguration"
+    },
+    {
+      "id": "java-hostname-verifier-off",
+      "cweId": "CWE-295",
+      "name": "Hostname verification disabled",
+      "category": "transport",
+      "severity": "high",
+      "languages": [
+        "java"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "ALLOW_ALL_HOSTNAME_VERIFIER|NoopHostnameVerifier",
+          "flags": "g"
+        }
+      ],
+      "message": "Disabling hostname verification enables MITM even with valid certs",
+      "recommendation": "Use the default hostname verifier",
+      "owaspCategory": "A05:2021 - Security Misconfiguration"
+    },
+    {
+      "id": "java-jndi-lookup-string",
+      "cweId": "CWE-917",
+      "name": "JNDI lookup expression (${jndi:...})",
+      "category": "injection",
+      "severity": "critical",
+      "languages": [
+        "java"
+      ],
+      "patterns": [
+        {
+          "type": "regex",
+          "value": "\\$\\{jndi:",
+          "flags": "g"
+        }
+      ],
+      "message": "JNDI lookup strings enable remote code loading (Log4Shell pattern)",
+      "recommendation": "Never construct JNDI lookups from input; upgrade logging libraries",
+      "owaspCategory": "A03:2021 - Injection"
+    }
+  ]
+}

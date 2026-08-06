@@ -37,6 +37,14 @@ import { IdeBridgeService } from './services/ide-bridge'
 import { qualityGate } from './utils/quality-gate'
 import { falsePositiveDetector } from './utils/false-positive-detector'
 import { intelligencePrioritizer } from './utils/intelligence-prioritizer'
+import { getOfflineAnalyzer } from './core/offline-analyzer'
+import {
+  fingerprintIssues,
+  createBaselineFile,
+  parseBaselineFile,
+} from './core/baseline'
+import { BASELINE_FILENAME } from './services/code-analysis-service'
+import { initSyntaxServiceFromDir } from './core/syntax-service'
 
 let authService: AuthService
 let securityService: SecurityService
@@ -59,9 +67,72 @@ let ideBridgeService: IdeBridgeService
 let logger: Logger
 let statusBarItem: vscode.StatusBarItem
 
+const BASELINE_MAX_FILES = 2000
+const BASELINE_MAX_FILE_BYTES = 1024 * 1024
+
+const EXT_TO_LANGUAGE: Record<string, string> = {
+  js: 'javascript',
+  jsx: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  ts: 'typescript',
+  tsx: 'typescript',
+  py: 'python',
+  java: 'java',
+}
+
+function languageIdForPath(relPath: string): string {
+  const ext = relPath.split('.').pop()?.toLowerCase() || ''
+  return EXT_TO_LANGUAGE[ext] || 'javascript'
+}
+
+/**
+ * Scan WITHOUT baseline filtering so already-accepted findings are
+ * re-captured instead of silently dropped from the new snapshot.
+ */
+function collectBaselineFingerprints(code: string, languageId: string, relPath: string): string[] {
+  // Must use the same profile real scans use, or a 'full'-profile workspace
+  // baselines only the precision findings and the rest stay visible forever.
+  const settings = configurationService?.getSettings() as
+    | (ExtensionSettings & { localPackProfile?: 'precision' | 'full' })
+    | undefined
+  const scan = getOfflineAnalyzer().analyze(code, languageId, {
+    filePathHint: relPath,
+    packProfile: settings?.localPackProfile || 'precision',
+  })
+  return fingerprintIssues(scan.issues, relPath, code)
+}
+
+async function mergeIntoBaselineFile(root: vscode.Uri, prints: string[]): Promise<number> {
+  const baselineUri = vscode.Uri.joinPath(root, BASELINE_FILENAME)
+  let existing: string[] = []
+  try {
+    const bytes = await vscode.workspace.fs.readFile(baselineUri)
+    existing = [...parseBaselineFile(Buffer.from(bytes).toString('utf8'))]
+  } catch {
+    // No baseline yet — start fresh.
+  }
+  const merged = createBaselineFile([...existing, ...prints])
+  await vscode.workspace.fs.writeFile(
+    baselineUri,
+    Buffer.from(JSON.stringify(merged, null, 2) + '\n', 'utf8')
+  )
+  return merged.fingerprints.length
+}
+
 export async function activate(context: vscode.ExtensionContext) {
   logger = new Logger()
   logger.info('Activating Jokalala Code Analysis extension')
+
+  // Tree-sitter syntax layer (Python/Java precision). Fire-and-forget:
+  // scans run regex-only until it resolves, and forever if it fails.
+  void initSyntaxServiceFromDir(path.join(context.extensionPath, 'dist', 'wasm'))
+    .then((ok) =>
+      logger.info(`Syntax precision layer ${ok ? 'ready' : 'unavailable (regex-only mode)'}`)
+    )
+    .catch((err) =>
+      logger.warn('Syntax precision layer failed to initialize; regex-only mode', err)
+    )
 
   try {
     // Auth — initialize first so token is available for all API calls
@@ -278,6 +349,112 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       'jokalala-code-analysis.showSettings',
       showSettings
+    )
+  )
+
+  // Baseline commands: snapshot current findings as "accepted" so future
+  // scans only report NEW issues (brownfield adoption).
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'jokalala-code-analysis.baselineCurrentFile',
+      async () => {
+        const editor = vscode.window.activeTextEditor
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri
+        if (!editor || !root) {
+          vscode.window.showWarningMessage(
+            'Jokalala: open a file inside a workspace folder to create a baseline.'
+          )
+          return
+        }
+        const document = editor.document
+        const relPath = vscode.workspace.asRelativePath(document.uri, false)
+        const prints = collectBaselineFingerprints(document.getText(), document.languageId, relPath)
+        const total = await mergeIntoBaselineFile(root, prints)
+        vscode.window.showInformationMessage(
+          `Jokalala: baselined ${prints.length} finding(s) from ${relPath} ` +
+            `(${total} total in ${BASELINE_FILENAME}).`
+        )
+      }
+    )
+  )
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'jokalala-code-analysis.baselineWorkspace',
+      async () => {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri
+        if (!root) {
+          vscode.window.showWarningMessage('Jokalala: open a workspace folder to create a baseline.')
+          return
+        }
+        const files = await vscode.workspace.findFiles(
+          '**/*.{js,jsx,mjs,cjs,ts,tsx,py,java}',
+          '**/{node_modules,dist,out,build,coverage,.git,venv,.venv,target,vendor}/**',
+          BASELINE_MAX_FILES
+        )
+        if (files.length === 0) {
+          vscode.window.showInformationMessage('Jokalala: no scannable files found in the workspace.')
+          return
+        }
+
+        const allPrints: string[] = []
+        let scanned = 0
+        let skipped = 0
+        let cancelled = false
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Jokalala: baselining workspace…',
+            cancellable: true,
+          },
+          async (progress, token) => {
+            for (let i = 0; i < files.length; i++) {
+              if (token.isCancellationRequested) {
+                cancelled = true
+                return
+              }
+              const uri = files[i]
+              const relPath = vscode.workspace.asRelativePath(uri, false)
+              progress.report({
+                message: `${i + 1}/${files.length}: ${relPath}`,
+                increment: 100 / files.length,
+              })
+              try {
+                const bytes = await vscode.workspace.fs.readFile(uri)
+                if (bytes.byteLength > BASELINE_MAX_FILE_BYTES) {
+                  skipped++
+                  continue
+                }
+                const code = Buffer.from(bytes).toString('utf8')
+                const lang = languageIdForPath(relPath)
+                allPrints.push(...collectBaselineFingerprints(code, lang, relPath))
+                scanned++
+              } catch {
+                skipped++
+              }
+              // Analysis is synchronous — yield between files so the
+              // extension host stays responsive on large workspaces.
+              if (i % 20 === 19) await new Promise((r) => setImmediate(r))
+            }
+          }
+        )
+
+        // A partial baseline is worse than none: it would mark an arbitrary
+        // subset of the workspace as accepted while reporting success.
+        if (cancelled) {
+          vscode.window.showWarningMessage(
+            `Jokalala: workspace baseline cancelled after ${scanned} file(s) — nothing was written.`
+          )
+          return
+        }
+
+        const total = await mergeIntoBaselineFile(root, allPrints)
+        vscode.window.showInformationMessage(
+          `Jokalala: baselined ${allPrints.length} finding(s) from ${scanned} file(s)` +
+            (skipped > 0 ? ` (${skipped} skipped)` : '') +
+            ` — ${total} total in ${BASELINE_FILENAME}.`
+        )
+      }
     )
   )
 
@@ -1689,7 +1866,15 @@ function showAnalysisSummary(summary: any) {
     return
   }
 
-  const message = `Analysis complete: ${summary.totalIssues ?? 0} issues (Score: ${summary.overallScore ?? 'N/A'}/100)`
+  const hiddenParts: string[] = []
+  if (summary.suppressedCount > 0) {
+    hiddenParts.push(`${summary.suppressedCount} suppressed by inline directives`)
+  }
+  if (summary.baselinedCount > 0) {
+    hiddenParts.push(`${summary.baselinedCount} baselined`)
+  }
+  const hidden = hiddenParts.length > 0 ? ` · ${hiddenParts.join(', ')}` : ''
+  const message = `Analysis complete: ${summary.totalIssues ?? 0} issues (Score: ${summary.overallScore ?? 'N/A'}/100)${hidden}`
   if (statusBarItem) {
     statusBarItem.text = '$(bug) Analysis Complete'
     setTimeout(() => {

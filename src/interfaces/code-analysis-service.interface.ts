@@ -177,6 +177,10 @@ export interface AnalysisSummary {
   lowIssues: number
   overallScore?: number
   analysisTime?: number
+  /** Findings hidden by inline `// jokalala-ignore` / nosec directives. */
+  suppressedCount?: number
+  /** Findings excluded because they match the accepted baseline. */
+  baselinedCount?: number
 }
 
 export interface HealthCheckResult {

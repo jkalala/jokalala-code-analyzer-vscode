@@ -37,7 +37,43 @@ import { Logger } from './logger'
 import { SecurityService } from './security-service'
 import { getOfflineAnalyzer } from '../core/offline-analyzer'
 import { getCustomRuleEngine } from '../core/custom-rules'
+import { parseBaselineFile } from '../core/baseline'
+import * as fs from 'fs'
+import * as path from 'path'
 import type { Issue, Recommendation } from '../interfaces/code-analysis-service.interface'
+
+export const BASELINE_FILENAME = '.jokalala-baseline.json'
+
+let baselineCache: {
+  filePath: string
+  mtimeMs: number
+  fingerprints: Set<string>
+} | null = null
+
+/**
+ * Accepted-findings baseline from the workspace root, re-read only when the
+ * file's mtime changes. Missing or malformed file → undefined (no filtering).
+ */
+function loadWorkspaceBaseline(): ReadonlySet<string> | undefined {
+  try {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    if (!root) return undefined
+    const baselinePath = path.join(root, BASELINE_FILENAME)
+    const stat = fs.statSync(baselinePath)
+    if (
+      baselineCache &&
+      baselineCache.filePath === baselinePath &&
+      baselineCache.mtimeMs === stat.mtimeMs
+    ) {
+      return baselineCache.fingerprints
+    }
+    const fingerprints = parseBaselineFile(fs.readFileSync(baselinePath, 'utf8'))
+    baselineCache = { filePath: baselinePath, mtimeMs: stat.mtimeMs, fingerprints }
+    return fingerprints
+  } catch {
+    return undefined
+  }
+}
 
 /** Reverse of CustomRuleEngine's internal extension→language map (custom-rules.ts),
  * used to synthesize a filename for language-applicability checks when no real
@@ -359,6 +395,11 @@ export class CodeAnalysisService implements ICodeAnalysisService {
         lowIssues: countBy('low'),
         analysisTime:
           (local.summary?.analysisTime || 0) + (cloud.summary?.analysisTime || 0),
+        // Only the local stage applies suppressions/baselines, so carry its
+        // counts through — otherwise hybrid scans silently hide findings
+        // without telling the user anything was filtered.
+        suppressedCount: local.summary?.suppressedCount,
+        baselinedCount: local.summary?.baselinedCount,
       },
       requestId,
       metadata: {
@@ -475,7 +516,16 @@ export class CodeAnalysisService implements ICodeAnalysisService {
     const profile =
       ((this.settings as ExtensionSettings & { localPackProfile?: string })
         .localPackProfile as 'precision' | 'full') || 'precision'
-    const result = offline.analyze(code, language, { packProfile: profile })
+    // Workspace-relative hint keeps baseline fingerprints portable across
+    // machines and lets test-path suppression see the real location.
+    const filePathHint = filePath
+      ? vscode.workspace.asRelativePath(filePath, false)
+      : undefined
+    const result = offline.analyze(code, language, {
+      packProfile: profile,
+      filePathHint,
+      baseline: loadWorkspaceBaseline(),
+    })
     const prioritizedIssues: Issue[] = result.issues.map(issue => ({
       id: issue.id,
       severity: String(issue.severity).toLowerCase() as Issue['severity'],
@@ -517,6 +567,8 @@ export class CodeAnalysisService implements ICodeAnalysisService {
         mediumIssues: prioritizedIssues.filter(i => i.severity === 'medium').length,
         lowIssues: prioritizedIssues.filter(i => i.severity === 'low').length,
         analysisTime: result.summary.analysisTime,
+        suppressedCount: result.summary.suppressedCount,
+        baselinedCount: result.summary.baselinedCount,
       },
       requestId,
       metadata: {

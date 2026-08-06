@@ -1,3 +1,22 @@
+## [2.6.0] - 2026-08-06
+
+### Added
+
+- **Taint analysis for JavaScript/TypeScript** (`core/taint-analysis.ts`). The local Tier-1 engine now tracks attacker-controlled data (Express `req.*`, DOM `location`/`document`, `process.argv`) from source to sink through assignments, destructuring, template literals, and string operations — with sanitizer awareness (`DOMPurify.sanitize` clears XSS taint but not SQL taint; `parseInt`/`encodeURIComponent` clear everything; `.replace()`/`JSON.stringify` count as partial and downgrade instead of clearing) and parameterized-query recognition (`db.query("… ?", [x])` is safe by construction). New rules: `js-taint-sql-injection`, `js-taint-command-injection`, `js-taint-code-injection`, `js-taint-xss`, `js-taint-path-traversal`, `js-taint-open-redirect`. Findings carry the full source→sink flow in the message and metadata, and a taint finding replaces the shallower single-node finding for the same CWE+line. Precision-first by design: taint does not propagate through unknown function calls or tagged templates, and free variables are never assumed tainted.
+- **Computed confidence.** Taint findings' `confidence` and `falsePositiveLikelihood` are now derived from evidence (source kind, propagation-path length, partial-sanitizer presence) instead of the engine-wide constants used previously.
+- **Inline suppression directives** (`core/suppression-directives.ts`): `// jokalala-ignore` (trailing = this line, standalone = next line), `// jokalala-ignore-next-line`, rule-scoped `// jokalala-ignore: rule-id`, plus `nosec`/`NOSONAR` compat — in `//`, `#`, `/* */`, `--`, and `<!--` comment styles. Applied before taint-wins dedupe so suppressing a specific taint rule still lets the broader pack finding surface. Suppressed counts are reported in the analysis summary.
+- **Baseline support for brownfield adoption** (`core/baseline.ts` + two new commands: "Baseline Current File" and "Baseline Entire Workspace"). Snapshots current findings as content-based SHA-256 fingerprints in `.jokalala-baseline.json` at the workspace root; later scans report only new findings. Fingerprints deliberately exclude line numbers (unrelated edits shifting code don't resurrect baselined findings) but include normalized line text (editing the flagged line invalidates the fingerprint) and an occurrence index (a baseline of two identical findings doesn't absorb a third).
+- **Rule corpus expanded from 18 to 72 rules.** `jokalala.javascript` 1.1.0 (7 → 27: weak hash/cipher, `Math.random` tokens, `rejectUnauthorized: false`, JWT `none`/unverified decode, `vm` execution, `__proto__` assignment, timing-unsafe compares, Electron misconfig, SQL template literals, more), `jokalala.secrets` 1.1.0 (2 → 12: GitHub/Slack/Stripe/Google/npm token formats, private-key blocks, credentialed connection URIs, hardcoded JWTs), new `jokalala.python` 1.0.0 (16 rules) and `jokalala.java` 1.0.0 (10 rules). Every new rule ships with a vulnerable/safe test pair asserting it fires on the vulnerability and stays silent on the fix.
+- **Tree-sitter syntax layer for Python and Java** (`core/syntax-service.ts`, WASM via web-tree-sitter + `@vscode/tree-sitter-wasm` grammars, ~1 MB added to the package). Regex-pack findings inside comments are dropped (commented-out code can't execute — but the secrets pack is exempt, because a commented-out credential is still a leak), and Python `eval`/`exec`/`os.system` calls with provably static string arguments are downgraded to low severity, f-strings excluded. Initialization is async and optional: until it completes — or forever, if the WASM fails to load — analysis behaves exactly as before.
+
+### Fixed
+
+- **File paths were never passed to the local engine** (`runOfflineAnalysis` received `filePath` but dropped it), so test-path suppression had been dead in real scans. Now forwarded as a workspace-relative hint, which also keeps baseline fingerprints portable across machines.
+
+### Changed
+
+- Marketing description aligned with reality: JS/TS get AST + taint depth, Python/Java get tree-sitter-refined rule packs, secrets detection applies everywhere; the "10+ languages" claim is gone.
+
 ## [2.5.0] - 2026-08-04
 
 ### Added
