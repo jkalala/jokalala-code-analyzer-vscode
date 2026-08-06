@@ -91,7 +91,15 @@ function languageIdForPath(relPath: string): string {
  * re-captured instead of silently dropped from the new snapshot.
  */
 function collectBaselineFingerprints(code: string, languageId: string, relPath: string): string[] {
-  const scan = getOfflineAnalyzer().analyze(code, languageId, { filePathHint: relPath })
+  // Must use the same profile real scans use, or a 'full'-profile workspace
+  // baselines only the precision findings and the rest stay visible forever.
+  const settings = configurationService?.getSettings() as
+    | (ExtensionSettings & { localPackProfile?: 'precision' | 'full' })
+    | undefined
+  const scan = getOfflineAnalyzer().analyze(code, languageId, {
+    filePathHint: relPath,
+    packProfile: settings?.localPackProfile || 'precision',
+  })
   return fingerprintIssues(scan.issues, relPath, code)
 }
 
@@ -118,9 +126,13 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Tree-sitter syntax layer (Python/Java precision). Fire-and-forget:
   // scans run regex-only until it resolves, and forever if it fails.
-  void initSyntaxServiceFromDir(path.join(context.extensionPath, 'dist', 'wasm')).then(
-    (ok) => logger.info(`Syntax precision layer ${ok ? 'ready' : 'unavailable (regex-only mode)'}`)
-  )
+  void initSyntaxServiceFromDir(path.join(context.extensionPath, 'dist', 'wasm'))
+    .then((ok) =>
+      logger.info(`Syntax precision layer ${ok ? 'ready' : 'unavailable (regex-only mode)'}`)
+    )
+    .catch((err) =>
+      logger.warn('Syntax precision layer failed to initialize; regex-only mode', err)
+    )
 
   try {
     // Auth — initialize first so token is available for all API calls
@@ -388,6 +400,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const allPrints: string[] = []
         let scanned = 0
         let skipped = 0
+        let cancelled = false
         await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
@@ -396,7 +409,10 @@ export async function activate(context: vscode.ExtensionContext) {
           },
           async (progress, token) => {
             for (let i = 0; i < files.length; i++) {
-              if (token.isCancellationRequested) return
+              if (token.isCancellationRequested) {
+                cancelled = true
+                return
+              }
               const uri = files[i]
               const relPath = vscode.workspace.asRelativePath(uri, false)
               progress.report({
@@ -422,6 +438,15 @@ export async function activate(context: vscode.ExtensionContext) {
             }
           }
         )
+
+        // A partial baseline is worse than none: it would mark an arbitrary
+        // subset of the workspace as accepted while reporting success.
+        if (cancelled) {
+          vscode.window.showWarningMessage(
+            `Jokalala: workspace baseline cancelled after ${scanned} file(s) — nothing was written.`
+          )
+          return
+        }
 
         const total = await mergeIntoBaselineFile(root, allPrints)
         vscode.window.showInformationMessage(

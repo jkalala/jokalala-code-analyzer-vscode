@@ -75,6 +75,24 @@ suite('Inline suppression directives', () => {
     assert.ok(result.issues.length > 0)
   })
 
+  // Rule lists are only read after an explicit colon. Otherwise Bandit's
+  // `# nosec B101` or a trailing reason would be parsed as a rule filter and
+  // suppress nothing — the opposite of what the author asked for.
+  test('nosec with a foreign tool rule id still suppresses everything', () => {
+    const result = analyze('eval(req.query.code); // nosec B101')
+    assert.strictEqual(result.issues.length, 0)
+  })
+
+  test('jokalala-ignore followed by a prose reason still suppresses', () => {
+    const result = analyze('eval(req.query.code); // jokalala-ignore false positive, reviewed')
+    assert.strictEqual(result.issues.length, 0)
+  })
+
+  test('standalone directive with a prose reason still targets the next line', () => {
+    const code = ['// jokalala-ignore reviewed by security', 'eval(req.query.code);'].join('\n')
+    assert.strictEqual(analyze(code).issues.length, 0)
+  })
+
   test('index parses # and /* comment styles and hash-style rules lists', () => {
     const idx = buildSuppressionIndex(
       ['os.system(cmd)  # nosec', 'other()', '/* jokalala-ignore: rule-x */ dangerous()'].join('\n')

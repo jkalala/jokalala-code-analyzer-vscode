@@ -147,6 +147,20 @@ function taintFindingToIssue(f: TaintFinding, index: number): SecurityIssue {
 
 const TEST_PATH_RE = /\b(?:__tests__|\.test\.|\.spec\.|\/tests?\/|\\tests?\\)/i
 
+/**
+ * Reported in OfflineAnalysisResult.metadata and consumed by telemetry.
+ * Read from the manifest so it cannot drift from the published version the
+ * way the previously hardcoded '2.4.1' did.
+ */
+const ENGINE_VERSION: string = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return (require('../../package.json') as { version?: string }).version || '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+})()
+
 /** Languages with a tree-sitter grammar backing the syntax precision layer. */
 const SYNTAX_LANGS = new Set(['python', 'java'])
 
@@ -586,7 +600,7 @@ export class LocalDeterministicEngine {
         baselinedCount,
       },
       metadata: {
-        version: '2.4.1',
+        version: ENGINE_VERSION,
         rulesVersion: packsMeta.map((p) => `${p.id}@${p.version}`).join(','),
         language: lang,
         isOffline: true,

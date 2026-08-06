@@ -395,6 +395,11 @@ export class CodeAnalysisService implements ICodeAnalysisService {
         lowIssues: countBy('low'),
         analysisTime:
           (local.summary?.analysisTime || 0) + (cloud.summary?.analysisTime || 0),
+        // Only the local stage applies suppressions/baselines, so carry its
+        // counts through — otherwise hybrid scans silently hide findings
+        // without telling the user anything was filtered.
+        suppressedCount: local.summary?.suppressedCount,
+        baselinedCount: local.summary?.baselinedCount,
       },
       requestId,
       metadata: {

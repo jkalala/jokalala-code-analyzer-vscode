@@ -15,8 +15,12 @@
  * targets the line below it (matching semgrep's nosemgrep convention).
  */
 
+// The rule list is only read when an explicit `:` follows the keyword.
+// Without this, `# nosec B101` (Bandit's standard form) or a trailing
+// `// jokalala-ignore false positive` would be parsed as a rule filter and
+// silently suppress nothing — the opposite of what the author asked for.
 const DIRECTIVE_RE =
-  /(?:\/\/|#|\/\*|<!--|--)[ \t]*(jokalala-ignore-next-line|jokalala-ignore|nosec|nosonar)\b[ \t]*:?[ \t]*([A-Za-z0-9_.,\- \t]*)/i
+  /(?:\/\/|#|\/\*|<!--|--)[ \t]*(jokalala-ignore-next-line|jokalala-ignore|nosec|nosonar)\b(?:[ \t]*:[ \t]*([A-Za-z0-9_.,\- \t]*))?/i
 
 const RULE_TOKEN_RE = /^[\w.-]+$/
 
@@ -46,14 +50,18 @@ export function buildSuppressionIndex(source: string): SuppressionIndex {
       .filter((t) => t.length > 0 && RULE_TOKEN_RE.test(t))
     const rules = ruleTokens.length > 0 ? new Set(ruleTokens) : null
 
-    // Standalone = the directive is the whole line (nothing but whitespace
-    // before the comment, nothing but a comment terminator after it). A
-    // leading `/* … */ code()` targets its own line like a trailing comment.
+    // Standalone = the directive comment occupies the whole line, so it
+    // targets the line below. A trailing reason ("// jokalala-ignore known
+    // false positive") stays standalone: for line comments everything after
+    // the keyword is still comment text. Block comments are only standalone
+    // when no code follows the terminator — `/* … */ code()` behaves like a
+    // trailing comment and targets its own line.
     const beforeEmpty = text.slice(0, m.index).trim().length === 0
-    const after = text
-      .slice(m.index + m[0].length)
-      .replace(/^\s*(?:\*\/|-->)?\s*/, '')
-    const standalone = beforeEmpty && after.length === 0
+    const isBlockComment = /^(?:\/\*|<!--)/.test(m[0])
+    const afterTerminator = isBlockComment
+      ? text.slice(m.index + m[0].length).replace(/^[^]*?(?:\*\/|-->)/, '').trim()
+      : ''
+    const standalone = beforeEmpty && (!isBlockComment || afterTerminator.length === 0)
     const targetLine =
       keyword === 'jokalala-ignore-next-line' || standalone ? i + 2 : i + 1
 

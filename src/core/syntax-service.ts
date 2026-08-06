@@ -99,6 +99,13 @@ export function isSyntaxReady(language: string): boolean {
 
 /** Test hook: drop all loaded state so not-ready behavior can be exercised. */
 export function resetSyntaxService(): void {
+  // The parser holds WASM heap memory the JS GC cannot reclaim, so each
+  // init/reset cycle would otherwise leak one parser.
+  try {
+    parser?.delete()
+  } catch {
+    // Already deleted or runtime torn down — nothing to reclaim.
+  }
   initPromise = null
   parser = null
   languages.clear()
@@ -154,9 +161,10 @@ function collectPythonCalls(code: string, root: any): PythonCallFact[] {
 export function getSyntaxFacts(code: string, language: string): SyntaxFacts | null {
   const lang = language as SyntaxLanguage
   if (!parser || !languages.has(lang)) return null
+  let tree: ReturnType<Parser['parse']> = null
   try {
     parser.setLanguage(languages.get(lang)!)
-    const tree = parser.parse(code)
+    tree = parser.parse(code)
     if (!tree) return null
     const root: any = tree.rootNode
 
@@ -167,7 +175,6 @@ export function getSyntaxFacts(code: string, language: string): SyntaxFacts | nu
     commentRanges.sort((a, b) => a.start - b.start)
 
     const pythonCalls = lang === 'python' ? collectPythonCalls(code, root) : []
-    tree.delete()
 
     return {
       language: lang,
@@ -183,5 +190,12 @@ export function getSyntaxFacts(code: string, language: string): SyntaxFacts | nu
   } catch (err) {
     console.warn(`[jokalala] tree-sitter parse failed (${lang}):`, err)
     return null
+  } finally {
+    // Trees hold WASM heap memory; release even if extraction threw.
+    try {
+      tree?.delete()
+    } catch {
+      // Nothing reclaimable.
+    }
   }
 }

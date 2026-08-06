@@ -10,6 +10,7 @@
 /// <reference types="mocha" />
 
 import * as assert from 'assert'
+import { loadTier1Packs } from '@jokalala/analyzer-rule-packs'
 import { getOfflineAnalyzer } from '../core/offline-analyzer'
 
 interface Pair {
@@ -359,12 +360,20 @@ suite('Rule pack expansion — pack integrity', () => {
     assert.ok(!ruleIds('x = 1', 'python').includes('js-weak-hash'))
   })
 
-  test('precision profile exposes 50+ rules across the loaded packs', () => {
-    const engine = getOfflineAnalyzer()
-    const result = engine.analyze('const ok = 1;', 'javascript', { packProfile: 'precision' })
+  test('precision profile actually loads 50+ rules', () => {
+    const packs = loadTier1Packs('precision')
+    const total = packs.reduce((n, p) => n + p.manifest.rules.length, 0)
+    assert.ok(total >= 50, `expected 50+ rules across precision packs, got ${total}`)
+  })
+
+  test('precision profile includes the javascript, python, and java packs', () => {
+    const result = getOfflineAnalyzer().analyze('const ok = 1;', 'javascript', {
+      packProfile: 'precision',
+    })
     const packIds = result.metadata.rulesVersion
-    assert.ok(packIds.includes('jokalala.python@'), `python pack missing from ${packIds}`)
-    assert.ok(packIds.includes('jokalala.java@'), `java pack missing from ${packIds}`)
-    assert.ok(packIds.includes('jokalala.javascript@1.1.0'), `expected js pack 1.1.0 in ${packIds}`)
+    // Pack ids only — pinning versions here would break on every pack bump.
+    for (const id of ['jokalala.javascript@', 'jokalala.python@', 'jokalala.java@']) {
+      assert.ok(packIds.includes(id), `${id} missing from ${packIds}`)
+    }
   })
 })

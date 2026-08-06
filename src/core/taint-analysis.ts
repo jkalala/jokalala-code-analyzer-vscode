@@ -188,6 +188,38 @@ const SQL_METHODS = new Set(['query', 'execute', 'raw'])
 const EXEC_CALLS = new Set(['exec', 'execSync'])
 const SPAWN_CALLS = new Set(['spawn', 'spawnSync', 'execFile', 'execFileSync'])
 
+/** Identifiers a `require('child_process')` result is conventionally bound to. */
+const CHILD_PROCESS_RECEIVERS = new Set([
+  'child_process',
+  'childProcess',
+  'cp',
+  'proc',
+  'execa',
+])
+
+/**
+ * True when `x` in `x.exec(...)` plausibly refers to child_process rather
+ * than a RegExp or a database handle. Requires evidence — an unrecognized
+ * receiver is treated as NOT a command sink, since spawning is the rarer
+ * meaning of these method names.
+ */
+function isChildProcessReceiver(object: Node | null | undefined): boolean {
+  if (!object) return false
+  const name = dottedName(object)
+  if (!name) return false
+  if (CHILD_PROCESS_RECEIVERS.has(name)) return true
+  // require('child_process').exec(...)
+  if (
+    object.type === 'CallExpression' &&
+    object.callee.type === 'Identifier' &&
+    object.callee.name === 'require'
+  ) {
+    const a = object.arguments[0]
+    return a?.type === 'StringLiteral' && a.value === 'child_process'
+  }
+  return false
+}
+
 /** Dotted path for member chains of identifiers, e.g. "window.location.href". */
 function dottedName(node: Node | null | undefined): string | null {
   if (!node) return null
@@ -593,11 +625,28 @@ export class TaintAnalyzer {
     }
 
     // exec("cmd " + tainted) / spawn(tainted, …)
-    if ((bareName && EXEC_CALLS.has(bareName)) || (method && EXEC_CALLS.has(method))) {
+    //
+    // The member form needs a child_process-like receiver: `exec` is also
+    // RegExp.prototype.exec (`/ab+/.exec(input)`, `pattern.exec(q)`) and
+    // sqlite's `db.exec(sql)`, none of which spawn a process. Matching the
+    // bare method name here produced critical false positives on some of
+    // the most common code in a JS codebase.
+    const isCommandReceiver =
+      callee.type === 'MemberExpression' && isChildProcessReceiver(callee.object)
+
+    if (bareName && EXEC_CALLS.has(bareName)) {
       this.reportIfTainted('command', node, arg(0), path.scope)
       return
     }
-    if ((bareName && SPAWN_CALLS.has(bareName)) || (method && SPAWN_CALLS.has(method))) {
+    if (method && EXEC_CALLS.has(method) && isCommandReceiver) {
+      this.reportIfTainted('command', node, arg(0), path.scope)
+      return
+    }
+    if (bareName && SPAWN_CALLS.has(bareName)) {
+      this.reportIfTainted('command', node, arg(0), path.scope)
+      return
+    }
+    if (method && SPAWN_CALLS.has(method) && isCommandReceiver) {
       this.reportIfTainted('command', node, arg(0), path.scope)
       return
     }

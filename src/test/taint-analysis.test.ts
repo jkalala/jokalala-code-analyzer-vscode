@@ -108,6 +108,36 @@ suite('TaintAnalyzer — command injection (CWE-78)', () => {
     )
     assert.strictEqual(found.length, 0)
   })
+
+  test('flags exec() on a child_process-shaped receiver', () => {
+    const found = taintIssues(
+      "child_process.exec('ping ' + req.body.host);",
+      'js-taint-command-injection'
+    )
+    assert.strictEqual(found.length, 1)
+  })
+
+  // `exec` is also RegExp.prototype.exec and sqlite's db.exec — matching the
+  // bare method name flagged some of the most common code in a JS codebase
+  // as critical command injection.
+  test('does NOT flag RegExp.prototype.exec', () => {
+    for (const code of [
+      'const m = pattern.exec(req.query.q);',
+      'const m = /ab+/.exec(req.query.q);',
+      'const m = SAFE_RE.exec(req.body.value);',
+    ]) {
+      assert.strictEqual(
+        taintIssues(code, 'js-taint-command-injection').length,
+        0,
+        `unexpected command-injection finding for: ${code}`
+      )
+    }
+  })
+
+  test('does NOT flag a database handle .exec()', () => {
+    const found = taintIssues('db.exec(req.body.sql);', 'js-taint-command-injection')
+    assert.strictEqual(found.length, 0)
+  })
 })
 
 suite('TaintAnalyzer — code injection (CWE-95)', () => {
