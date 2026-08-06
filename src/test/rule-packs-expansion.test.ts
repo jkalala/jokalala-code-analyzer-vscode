@@ -265,6 +265,9 @@ const JAVA_PAIRS: Pair[] = [
   },
 ]
 
+// Every "credential" below is synthetic and assembled at runtime rather than
+// written as a literal — otherwise this file, which exists to test a secrets
+// scanner, trips every OTHER secrets scanner pointed at this repo.
 const SECRET_PAIRS: Pair[] = [
   {
     ruleId: 'github-token', lang: 'javascript',
@@ -273,7 +276,7 @@ const SECRET_PAIRS: Pair[] = [
   },
   {
     ruleId: 'slack-token', lang: 'javascript',
-    vuln: 'const value = "xoxb-123456789012-abcdefGHIJKL";',
+    vuln: `const value = "${'xox' + 'b'}-123456789012-abcdefGHIJKL";`,
     safe: 'const value = process.env.SLACK_TOKEN;',
   },
   {
@@ -283,22 +286,22 @@ const SECRET_PAIRS: Pair[] = [
   },
   {
     ruleId: 'google-api-key', lang: 'javascript',
-    vuln: `const value = "AIza${'A'.repeat(35)}";`,
+    vuln: `const value = "${'AI' + 'za'}${'A'.repeat(35)}";`,
     safe: 'const value = process.env.GOOGLE_API_KEY;',
   },
   {
     ruleId: 'private-key-block', lang: 'javascript',
-    vuln: 'const pem = "-----BEGIN RSA PRIVATE KEY-----";',
+    vuln: `const pem = "-----${'BEGIN'} RSA ${'PRIVATE'} KEY-----";`,
     safe: 'const pem = readPemFromVault();',
   },
   {
     ruleId: 'jwt-in-source', lang: 'javascript',
-    vuln: 'const raw = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcdef123456";',
+    vuln: `const raw = "${'ey' + 'JhbGciOiJIUzI1NiJ9'}.${'ey' + 'JzdWIiOiIxMjM0NTY3ODkwIn0'}.abcdef123456";`,
     safe: 'const raw = issueToken(user);',
   },
   {
     ruleId: 'connection-string-credentials', lang: 'javascript',
-    vuln: 'const dbUrl = "postgres://admin:hunter2@db.internal:5432/app";',
+    vuln: `const dbUrl = "postgres://admin:${'pw' + 'placeholder'}@db.internal:5432/app";`,
     safe: 'const dbUrl = "postgres://db.internal:5432/app";',
   },
   {
