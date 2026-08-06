@@ -1,8 +1,8 @@
 {
   "name": "jokalala-code-analysis",
   "displayName": "Jokalala Code Analyzer",
-  "description": "AI-powered security vulnerability detection with Two-Stage Analysis Pipeline. Find SQL injection, XSS, command injection, and 50+ vulnerability types across 10+ languages.",
-  "version": "2.5.0",
+  "description": "Two-stage security analysis: local engine with AST + taint tracking for JavaScript/TypeScript, tree-sitter-backed rules for Python and Java, 70+ security rules with secrets detection, inline suppressions and baselines, plus an optional AI cloud stage.",
+  "version": "2.6.0",
   "publisher": "jokalala",
   "author": {
     "name": "Jokalala Team",
@@ -142,6 +142,16 @@
         "command": "jokalala-code-analysis.analyzeProject",
         "title": "Jokalala: Analyze Entire Project",
         "icon": "$(folder)"
+      },
+      {
+        "command": "jokalala-code-analysis.baselineCurrentFile",
+        "title": "Jokalala: Baseline Current File (Accept Existing Findings)",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "jokalala-code-analysis.baselineWorkspace",
+        "title": "Jokalala: Baseline Entire Workspace (Accept Existing Findings)",
+        "icon": "$(checklist)"
       },
       {
         "command": "jokalala-code-analysis.clearCache",
@@ -732,6 +742,7 @@
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.3.8",
+    "@vscode/tree-sitter-wasm": "0.3.1",
     "c8": "^9.1.0",
     "esbuild": "^0.23.0",
     "mocha": "^10.2.0",
@@ -743,6 +754,7 @@
     "@babel/traverse": "^7.24.7",
     "@babel/types": "^7.24.7",
     "@jokalala/analyzer-rule-packs": "file:./packages/analyzer-rule-packs",
-    "axios": "^1.6.5"
+    "axios": "^1.6.5",
+    "web-tree-sitter": "0.26.11"
   }
 }

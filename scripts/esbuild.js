@@ -65,6 +65,28 @@ async function main() {
     const stat = fs.statSync(file)
     console.log(`Bundled ${file} (${(stat.size / 1024).toFixed(1)} KB)`)
   }
+
+  copyWasmAssets()
+}
+
+/**
+ * Tree-sitter runtime + Python/Java grammars for the syntax-aware precision
+ * layer (core/syntax-service.ts). Copied, not bundled — emscripten loads
+ * them from disk at runtime.
+ */
+function copyWasmAssets() {
+  const wasmDir = path.join(root, 'dist', 'wasm')
+  fs.mkdirSync(wasmDir, { recursive: true })
+  const assets = [
+    path.join(root, 'node_modules', 'web-tree-sitter', 'web-tree-sitter.wasm'),
+    path.join(root, 'node_modules', '@vscode', 'tree-sitter-wasm', 'wasm', 'tree-sitter-python.wasm'),
+    path.join(root, 'node_modules', '@vscode', 'tree-sitter-wasm', 'wasm', 'tree-sitter-java.wasm'),
+  ]
+  for (const src of assets) {
+    const dest = path.join(wasmDir, path.basename(src))
+    fs.copyFileSync(src, dest)
+    console.log(`Copied ${path.basename(src)} (${(fs.statSync(dest).size / 1024).toFixed(0)} KB)`)
+  }
 }
 
 main().catch((err) => {

@@ -43,6 +43,12 @@ export interface OfflineAnalysisOptions {
   language?: string
   packProfile?: 'precision' | 'full'
   filePathHint?: string
+  /** Intraprocedural source→sink taint tracking for JS/TS (default true). */
+  enableTaintAnalysis?: boolean
+  /** Honor inline `// jokalala-ignore` / nosec directives (default true). */
+  respectInlineSuppressions?: boolean
+  /** Fingerprints of accepted findings to exclude (see core/baseline.ts). */
+  baseline?: ReadonlySet<string>
 }
 
 export interface OfflineAnalysisResult {
@@ -58,6 +64,10 @@ export interface OfflineAnalysisResult {
     analysisTime: number
     linesAnalyzed: number
     coverage: number
+    /** Findings hidden by inline `// jokalala-ignore` / nosec directives. */
+    suppressedCount?: number
+    /** Findings excluded because they match the accepted baseline. */
+    baselinedCount?: number
   }
   metadata: {
     version: string

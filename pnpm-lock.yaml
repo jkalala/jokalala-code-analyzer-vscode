@@ -20,6 +20,9 @@ dependencies:
   axios:
     specifier: ^1.6.5
     version: 1.13.2
+  web-tree-sitter:
+    specifier: 0.26.11
+    version: 0.26.11
 
 devDependencies:
   '@types/babel__traverse':
@@ -37,6 +40,9 @@ devDependencies:
   '@vscode/test-electron':
     specifier: ^2.3.8
     version: 2.5.2
+  '@vscode/tree-sitter-wasm':
+    specifier: 0.3.1
+    version: 0.3.1
   c8:
     specifier: ^9.1.0
     version: 9.1.0
@@ -407,6 +413,10 @@ packages:
       semver: 7.7.3
     transitivePeerDependencies:
       - supports-color
+    dev: true
+
+  /@vscode/tree-sitter-wasm@0.3.1:
+    resolution: {integrity: sha512-RJFoomET6FajjG511fmQxeBQfU6M24a0aFZPqpid+ttIxanWf1VGytBG0UmsGjt07qmIPJS8U31D+aecuCucsQ==}
     dev: true
 
   /agent-base@7.1.4:
@@ -1999,6 +2009,10 @@ packages:
       yauzl: 2.10.0
       yazl: 2.5.1
     dev: true
+
+  /web-tree-sitter@0.26.11:
+    resolution: {integrity: sha512-Q5Dm3YTIXSXuH6FxX6RuzX2Qwpc4DPGiYMU87Wg5Z8OIStiQFiUex4zMDc0vBTw78EphaYJacncJghCHzbZptg==}
+    dev: false
 
   /whatwg-encoding@3.1.1:
     resolution: {integrity: sha512-6qN4hJdMwfYBtE3YBTTHhoeuUrDBPZmbQaxWAqSALV/MeEnR5z1xd8UKud2RAkFoPkmB+hli1TZSnyi84xz1vQ==}
