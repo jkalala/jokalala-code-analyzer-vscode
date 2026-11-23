@@ -38,7 +38,7 @@ export interface ICodeAnalysisService {
   /**
    * Clear the analysis cache
    */
-  clearCache(): Promise<void>
+  clearCache(): Promise<{ result: 'cleared' } | { result: 'skipped'; httpStatus: number }>
 
   /**
    * Test connection to the analysis service

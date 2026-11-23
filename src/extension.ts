@@ -39,6 +39,17 @@ import { falsePositiveDetector } from './utils/false-positive-detector'
 import { intelligencePrioritizer } from './utils/intelligence-prioritizer'
 import { getOfflineAnalyzer } from './core/offline-analyzer'
 import {
+  DEFAULT_LOCAL_ENGINE_CONFIG,
+  ENGINE_LANGUAGES,
+  LocalEngineClient,
+} from './services/local-engine-client'
+import { mergeEngineResults } from './services/local-engine-merge'
+import { FindingsPanel } from './providers/findings-panel'
+import {
+  LocalEngineLauncher,
+  resolveRepoRoot,
+} from './services/local-engine-launcher'
+import {
   fingerprintIssues,
   createBaselineFile,
   parseBaselineFile,
@@ -490,6 +501,13 @@ export async function activate(context: vscode.ExtensionContext) {
   )
 
   // Register command to toggle view mode (by file / by severity)
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'jokalala-code-analysis.openFindingsPanel',
+      () => FindingsPanel.show(issuesTreeProvider.getFileResults())
+    )
+  )
+
   context.subscriptions.push(
     vscode.commands.registerCommand(
       'jokalala-code-analysis.toggleViewMode',
@@ -1670,7 +1688,7 @@ async function analyzeProject() {
         // Local Tier-1 scan — no cloud, no auth, no cap beyond the ceiling
         // already applied above. This is the default, always-on pass.
         progress.report({ message: `Analyzing ${files.length} files locally...` })
-        const localResult = await codeAnalysisService.analyzeProjectLocally(
+        let localResult = await codeAnalysisService.analyzeProjectLocally(
           files,
           token,
           (done, total) => {
@@ -1684,6 +1702,83 @@ async function analyzeProject() {
           vscode.window.showInformationMessage('Project analysis cancelled.')
           resetStatusBar()
           return
+        }
+
+        // Full-engine pass: Tier-1 reads one file at a time, so request data
+        // that crosses controller -> service -> repository files is invisible
+        // to it. When the local analyzer service is running, send the Java
+        // files together with the whole project and fold its findings in.
+        // Fail-open: any problem leaves the Tier-1 result untouched.
+        if (files.some(f => ENGINE_LANGUAGES.has(f.language))) {
+          const engineCfg = vscode.workspace.getConfiguration('jokalala.localEngine')
+          const abort = new AbortController()
+          token.onCancellationRequested(() => abort.abort())
+          const engineEnabled = engineCfg.get<boolean>('enabled', true)
+          const engineUrl = engineCfg.get<string>(
+            'url',
+            DEFAULT_LOCAL_ENGINE_CONFIG.url
+          )
+          const engineRepoRoot = engineCfg.get<string>('repoRoot', '')
+
+          if (engineEnabled) {
+            progress.report({ message: 'Checking local analyzer service...' })
+            const started = await engineLauncher.ensureRunning(
+              {
+                autoStart: engineCfg.get<boolean>('autoStart', true),
+                trusted: vscode.workspace.isTrusted,
+                url: engineUrl,
+                repoRoot: engineRepoRoot,
+              },
+              abort.signal
+            )
+            if (started.status === 'started') {
+              logger.info('Local analyzer service started by the extension')
+            } else if (started.status === 'unavailable' && !engineNoticeShown) {
+              const why =
+                started.reason === 'no-repo-root'
+                  ? 'it is not running and jokalala.localEngine.repoRoot is not set, so it cannot be started automatically'
+                  : started.reason === 'exited' || started.reason === 'timeout'
+                    ? `it failed to start (${started.reason}${started.detail ? `: ${started.detail.slice(-160)}` : ''})`
+                    : null
+              if (why) {
+                engineNoticeShown = true
+                vscode.window.showInformationMessage(
+                  `Jokalala: cross-file Java analysis was skipped because the local analyzer service is unavailable — ${why}. Results are single-file only.`
+                )
+              }
+            }
+          }
+
+          const client = new LocalEngineClient(
+            {
+              ...DEFAULT_LOCAL_ENGINE_CONFIG,
+              enabled: engineEnabled,
+              url: engineUrl,
+            },
+            [
+              ...folders.map(f => f.uri.fsPath),
+              ...(resolveRepoRoot(engineRepoRoot) ? [resolveRepoRoot(engineRepoRoot)!] : []),
+            ],
+            (msg, detail) =>
+              logger.info(
+                `[local-engine] ${msg}`,
+                detail === undefined ? undefined : { detail: String(detail) }
+              )
+          )
+          progress.report({ message: 'Following data flow across files...' })
+          const engineResult = await client.analyzeProject(
+            // Absolute-vs-relative is irrelevant to the engine; it only needs
+            // stable, unique labels, and the relative path is also what Tier-1
+            // used, so results line up per file.
+            files.map(f => ({ path: f.path, content: f.content, language: f.language })),
+            abort.signal
+          )
+          if (engineResult) {
+            localResult = mergeEngineResults(localResult, engineResult)
+            logger.info('Local engine merged into project scan', localResult.metadata)
+          } else {
+            logger.info('Local engine unavailable; project scan is Tier-1 only')
+          }
         }
 
         let finalResult = localResult
@@ -1775,6 +1870,7 @@ async function analyzeProject() {
 
         // Update tree views with file-grouped results
         issuesTreeProvider.updateFileResults(fileResults, summaryData)
+        FindingsPanel.refresh(fileResults)
         recommendationsTreeProvider.updateRecommendations(
           finalResult.recommendations || []
         )
@@ -1802,10 +1898,14 @@ async function analyzeProject() {
 
 async function clearCache() {
   try {
-    await codeAnalysisService.clearCache()
-    vscode.window.showInformationMessage('Analysis cache cleared')
-  } catch (error) {
-    vscode.window.showErrorMessage(`Failed to clear cache: ${error}`)
+    const result = await codeAnalysisService.clearCache()
+    vscode.window.showInformationMessage(
+      result.result === 'cleared'
+        ? 'Analysis cache cleared'
+        : `The Jokalala cloud service declined the request (HTTP ${result.httpStatus}), so the cloud cache was not cleared. Local analysis keeps no cache.`
+    )
+  } catch (error: any) {
+    vscode.window.showErrorMessage(error?.message || String(error))
   }
 }
 
@@ -1813,7 +1913,17 @@ function showSettings() {
   vscode.commands.executeCommand('workbench.action.openSettings', 'jokalala')
 }
 
+/** Owns the analyzer service process when the extension started it. */
+const engineLauncher = new LocalEngineLauncher((msg, detail) =>
+  logger?.info(
+    `[local-engine] ${msg}`,
+    detail === undefined ? undefined : { detail: String(detail) }
+  )
+)
+let engineNoticeShown = false
+
 export function deactivate() {
+  engineLauncher.dispose()
   diagnosticsManager?.dispose()
   logger?.dispose()
 }
@@ -1985,6 +2095,7 @@ function handleAnalysisSuccess(
     issues,
     v2QualityPassed ? processedV2Report : undefined
   )
+  FindingsPanel.refresh(issuesTreeProvider.getFileResults())
   recommendationsTreeProvider.updateRecommendations(recommendations)
   metricsTreeProvider.updateMetrics(result.summary)
 

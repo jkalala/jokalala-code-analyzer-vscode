@@ -1,3 +1,31 @@
+## [2.7.2] - 2026-11-21
+
+### Fixed
+
+- **Jokalala: Clear Analysis Cache** no longer fails with "Request failed with status code 402". When the cloud cache endpoint answers 402, 401, 403 or 404 (cache not available to the account), the command now reports the HTTP status the cloud service returned and that the cloud cache was not cleared, instead of showing an error. Local analysis keeps no persistent cache, so there is nothing else to clear. Other failures (network errors, 5xx) are still reported, and the error message no longer repeats the "Failed to clear cache:" prefix.
+
+### Changed
+
+- `ICodeAnalysisService.clearCache()` now returns `{ result: 'cleared' } | { result: 'skipped'; httpStatus }` instead of `void`.
+
+## [2.7.1] - 2026-11-19
+
+### Added
+
+- **Jokalala: Open Findings in Editor** (button in the Issues view title bar and the command palette). Shows every finding in a full-width, filterable editor tab with the complete message, severity, CWE, cross-file/engine badges and the suggested fix; clicking a row opens the file at the line. Refreshes after each scan. Finding text is rendered as plain text, never HTML.
+
+## [2.7.0] - 2026-11-19
+
+### Added
+
+- **Cross-file Java analysis in "Analyze Entire Project".** Java files are sent, together with the whole project as context, to the local Jokalala analyzer service (`/api/analyze/batch`), so request data is followed across controller, service, repository and helper files (SQL, command and path injection). Engine findings replace Tier-1 injection findings on the files it analysed; every other Tier-1 finding is kept. Fail-open: if the service is unavailable the scan is Tier-1 only.
+- **Auto-start of the local analyzer service** (`jokalala.localEngine.autoStart`, default on). Starts the service from `jokalala.localEngine.repoRoot` (machine-scoped) or `JOKALALA_REPO_ROOT` in a trusted workspace, reuses one that is already running, and only stops a service it started itself.
+- New settings: `jokalala.localEngine.enabled`, `jokalala.localEngine.url` (loopback only), `jokalala.localEngine.autoStart`, `jokalala.localEngine.repoRoot`.
+
+### Fixed
+
+- Tier-1 no longer reports `@Value` configuration concatenated into a query as injection on files the engine analysed.
+
 ## [2.6.0] - 2026-08-06
 
 ### Added

@@ -548,6 +548,7 @@ export class CodeAnalysisService implements ICodeAnalysisService {
         ...(issue.metadata || {}),
         source: 'local-pack',
         engineTier: 1,
+        cwe: issue.cwe ?? [],
       },
     }))
 
@@ -1129,7 +1130,13 @@ export class CodeAnalysisService implements ICodeAnalysisService {
     })
   }
 
-  async clearCache(): Promise<void> {
+  /**
+   * Clears the cloud analysis cache. Returns 'cleared' on success, or 'skipped'
+   * when the cloud cache is unavailable to this account (402 payment required /
+   * 401 / 403 / 404): local analysis keeps no persistent cache, so there is
+   * nothing to clear and this is not an error.
+   */
+  async clearCache(): Promise<{ result: 'cleared' } | { result: 'skipped'; httpStatus: number }> {
     const { apiEndpoint } = this.settings
 
     if (!apiEndpoint) {
@@ -1140,7 +1147,13 @@ export class CodeAnalysisService implements ICodeAnalysisService {
       await axios.delete(`${apiEndpoint}/cache`, {
         headers: await this.buildAuthHeaders(),
       })
+      return { result: 'cleared' }
     } catch (error: any) {
+      const status = error?.response?.status
+      if (status === 402 || status === 401 || status === 403 || status === 404) {
+        this.logger.warn(`Cloud cache clear skipped (HTTP ${status})`)
+        return { result: 'skipped', httpStatus: status }
+      }
       this.logger.error('Failed to clear cache', error)
       throw new Error(`Failed to clear cache: ${error.message}`)
     }
