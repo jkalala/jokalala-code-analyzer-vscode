@@ -2,7 +2,7 @@
   "name": "jokalala-code-analysis",
   "displayName": "Jokalala Code Analyzer",
   "description": "Two-stage security analysis: local engine with AST + taint tracking for JavaScript/TypeScript, tree-sitter-backed rules for Python and Java, 70+ security rules with secrets detection, inline suppressions and baselines, plus an optional AI cloud stage.",
-  "version": "2.6.0",
+  "version": "2.7.2",
   "publisher": "jokalala",
   "author": {
     "name": "Jokalala Team",
@@ -172,6 +172,11 @@
         "command": "jokalala-code-analysis.toggleViewMode",
         "title": "Jokalala: Toggle Issues View Mode",
         "icon": "$(list-tree)"
+      },
+      {
+        "command": "jokalala-code-analysis.openFindingsPanel",
+        "title": "Jokalala: Open Findings in Editor",
+        "icon": "$(link-external)"
       },
       {
         "command": "jokalala.searchCVE",
@@ -380,6 +385,11 @@
       ],
       "view/title": [
         {
+          "command": "jokalala-code-analysis.openFindingsPanel",
+          "when": "view == jokalala-issues",
+          "group": "navigation@0"
+        },
+        {
           "command": "jokalala-code-analysis.toggleViewMode",
           "when": "view == jokalala-issues",
           "group": "navigation"
@@ -582,6 +592,27 @@
           "default": 120000,
           "description": "Maximum size (characters) for each file included in project analysis"
         },
+        "jokalala.localEngine.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "During \"Analyze Entire Project\", also send Java files (with the whole project as context) to the local Jokalala analyzer service so request data is followed across controller, service and repository files. Silent no-op when the service is not running. Source code is only ever sent to a loopback address."
+        },
+        "jokalala.localEngine.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start the local analyzer service automatically when a project scan needs it and it is not running. Requires jokalala.localEngine.repoRoot (or JOKALALA_REPO_ROOT) and a trusted workspace. The extension only stops a service it started itself."
+        },
+        "jokalala.localEngine.repoRoot": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Path to a Jokalala checkout that contains cli-rust/analyzer-service and lib/services/static-analyzer. Used to auto-start the local analyzer service. Machine-scoped so a workspace cannot choose what gets executed."
+        },
+        "jokalala.localEngine.url": {
+          "type": "string",
+          "default": "http://127.0.0.1:3847",
+          "description": "Base URL of the local Jokalala analyzer service. Must be a loopback address (localhost / 127.x / ::1). The bearer token is read from JOKALALA_ANALYZER_TOKEN or .jokalala/analyzer-token."
+        },
         "jokalala.cloudEnrichmentEnabled": {
           "type": "boolean",
           "default": false,
@@ -727,11 +758,12 @@
     "test:coverage": "pnpm run compile && pnpm run compile:test && c8 mocha",
     "publish": "vsce publish",
     "vscode:prepublish": "npm run compile",
-    "compile": "npm run compile:tsc && npm run compile:bundle",
+    "compile": "npm run compile:packs && npm run compile:tsc && npm run compile:bundle",
+    "compile:packs": "tsc -p packages/analyzer-rule-packs",
     "compile:tsc": "tsc -p ./ --noEmit",
     "compile:test": "tsc -p tsconfig.test.json",
     "compile:bundle": "node ./scripts/esbuild.js",
-    "typecheck": "tsc -p ./ --noEmit",
+    "typecheck": "npm run compile:packs && tsc -p ./ --noEmit",
     "package": "npm run compile && vsce package --no-dependencies",
     "check:vsix-size": "node ./scripts/check-vsix-size.js",
     "test:smoke": "node -e \"require('fs').accessSync('dist/extension.js'); console.log('bundle ok')\""
@@ -753,7 +785,7 @@
     "@babel/parser": "^7.24.7",
     "@babel/traverse": "^7.24.7",
     "@babel/types": "^7.24.7",
-    "@jokalala/analyzer-rule-packs": "file:./packages/analyzer-rule-packs",
+    "@jokalala/analyzer-rule-packs": "link:./packages/analyzer-rule-packs",
     "axios": "^1.6.5",
     "web-tree-sitter": "0.26.11"
   }

@@ -86,6 +86,19 @@ export class IssuesTreeProvider
     this._onDidChangeTreeData.fire(undefined)
   }
 
+  /** Current findings grouped by file (for the full-width findings panel). */
+  getFileResults(): FileAnalysisResult[] {
+    if (this.fileResults.length > 0) return this.fileResults
+    const byFile = new Map<string, Issue[]>()
+    for (const issue of this.issues) {
+      const key = issue.filePath ?? ''
+      const list = byFile.get(key) ?? []
+      list.push(issue)
+      byFile.set(key, list)
+    }
+    return [...byFile].map(([filePath, issues]) => ({ filePath, issues }))
+  }
+
   /**
    * Toggle between file view and severity view
    */
