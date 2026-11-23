@@ -15,8 +15,8 @@ dependencies:
     specifier: ^7.24.7
     version: 7.29.8
   '@jokalala/analyzer-rule-packs':
-    specifier: file:./packages/analyzer-rule-packs
-    version: file:packages/analyzer-rule-packs
+    specifier: link:./packages/analyzer-rule-packs
+    version: link:packages/analyzer-rule-packs
   axios:
     specifier: ^1.6.5
     version: 1.13.2
@@ -2136,8 +2136,3 @@ packages:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
     dev: true
-
-  file:packages/analyzer-rule-packs:
-    resolution: {directory: packages/analyzer-rule-packs, type: directory}
-    name: '@jokalala/analyzer-rule-packs'
-    dev: false

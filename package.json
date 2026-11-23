@@ -758,11 +758,12 @@
     "test:coverage": "pnpm run compile && pnpm run compile:test && c8 mocha",
     "publish": "vsce publish",
     "vscode:prepublish": "npm run compile",
-    "compile": "npm run compile:tsc && npm run compile:bundle",
+    "compile": "npm run compile:packs && npm run compile:tsc && npm run compile:bundle",
+    "compile:packs": "tsc -p packages/analyzer-rule-packs",
     "compile:tsc": "tsc -p ./ --noEmit",
     "compile:test": "tsc -p tsconfig.test.json",
     "compile:bundle": "node ./scripts/esbuild.js",
-    "typecheck": "tsc -p ./ --noEmit",
+    "typecheck": "npm run compile:packs && tsc -p ./ --noEmit",
     "package": "npm run compile && vsce package --no-dependencies",
     "check:vsix-size": "node ./scripts/check-vsix-size.js",
     "test:smoke": "node -e \"require('fs').accessSync('dist/extension.js'); console.log('bundle ok')\""
@@ -784,7 +785,7 @@
     "@babel/parser": "^7.24.7",
     "@babel/traverse": "^7.24.7",
     "@babel/types": "^7.24.7",
-    "@jokalala/analyzer-rule-packs": "file:./packages/analyzer-rule-packs",
+    "@jokalala/analyzer-rule-packs": "link:./packages/analyzer-rule-packs",
     "axios": "^1.6.5",
     "web-tree-sitter": "0.26.11"
   }
