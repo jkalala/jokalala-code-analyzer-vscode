@@ -1773,6 +1773,9 @@ async function analyzeProject() {
             files.map(f => ({ path: f.path, content: f.content, language: f.language })),
             abort.signal
           )
+          // A cancelled request also yields null; do not fall through to
+          // cloud enrichment or publish results as a completed scan.
+          if (token.isCancellationRequested || abort.signal.aborted) return
           if (engineResult) {
             localResult = mergeEngineResults(localResult, engineResult)
             logger.info('Local engine merged into project scan', localResult.metadata)
@@ -2095,7 +2098,17 @@ function handleAnalysisSuccess(
     issues,
     v2QualityPassed ? processedV2Report : undefined
   )
-  FindingsPanel.refresh(issuesTreeProvider.getFileResults())
+  // Single-file local issues carry no filePath, so they would group under ''
+  // and the panel could not open them. Attribute them to the scanned
+  // document; issues that already have a path are left alone.
+  const docPath = document.uri.fsPath
+  const panelResults = issuesTreeProvider.getFileResults().map(fr => {
+    const issuesWithPath = fr.issues.map(i =>
+      i.filePath ? i : { ...i, filePath: docPath }
+    )
+    return { ...fr, filePath: fr.filePath || docPath, issues: issuesWithPath }
+  })
+  FindingsPanel.refresh(panelResults)
   recommendationsTreeProvider.updateRecommendations(recommendations)
   metricsTreeProvider.updateMetrics(result.summary)
 

@@ -124,6 +124,37 @@ suite('local engine client', () => {
     assert.ok(!issue.message.startsWith('['))
   })
 
+  test('a batch entry with no result is skipped so Tier-1 findings stay', async () => {
+    const { fn } = fakeFetch((url, body) => {
+      if (url.endsWith('/health')) return { analyzerAvailable: true }
+      return {
+        results: body.files.map((f: { path: string }) =>
+          f.path === 'src/ProductController.java'
+            ? { path: f.path }
+            : { path: f.path, result: { securityIssues: [] } }
+        ),
+      }
+    })
+    const res = await new LocalEngineClient(cfg, [], undefined, fn).analyzeProject(files)
+    assert.ok(res)
+    assert.strictEqual(res!.byFile.has('src/ProductController.java'), false)
+    assert.strictEqual(res!.byFile.has('src/ProductRepository.java'), true)
+  })
+
+  test('a language group over the context limit keeps Tier-1 instead of a partial verdict', async () => {
+    const { fn, calls } = fakeFetch(url =>
+      url.endsWith('/health') ? { analyzerAvailable: true } : { results: [] }
+    )
+    const huge = { path: 'src/Huge.java', content: 'x'.repeat(8_000_001), language: 'java' }
+    const res = await new LocalEngineClient(cfg, [], undefined, fn).analyzeProject([
+      ...files,
+      huge,
+    ])
+    assert.ok(res)
+    assert.strictEqual(res!.byFile.size, 0)
+    assert.strictEqual(calls.some(c => c.url.endsWith('/api/analyze/batch')), false)
+  })
+
   test('an HTTP error fails open', async () => {
     let first = true
     const fn = (async (url: string) => {

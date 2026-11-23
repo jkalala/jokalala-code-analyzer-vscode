@@ -88,6 +88,18 @@ export function resolveRepoRoot(configured?: string): string | undefined {
   return undefined
 }
 
+function defaultKill(child: ChildProcess): void {
+  if (process.platform === 'win32' && child.pid) {
+    // npx -> node tree: kill the whole tree, not just the shim.
+    nodeSpawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+  } else {
+    child.kill()
+  }
+}
+
 export class LocalEngineLauncher {
   private child: ChildProcess | undefined
   private stderrTail = ''
@@ -98,8 +110,13 @@ export class LocalEngineLauncher {
     private readonly fetchImpl: FetchLike = (globalThis as any).fetch,
     private readonly spawnImpl: SpawnLike = nodeSpawn as unknown as SpawnLike,
     private readonly sleep: (ms: number) => Promise<void> = ms =>
-      new Promise(r => setTimeout(r, ms))
+      new Promise(r => setTimeout(r, ms)),
+    /** Terminates a child we started; injectable so tests never kill real PIDs. */
+    private readonly killImpl: (child: ChildProcess) => void = defaultKill
   ) {}
+
+  /** Bumped by dispose() so an in-flight start can tell it was disposed. */
+  private generation = 0
 
   /** True when this launcher started the running service. */
   get ownsProcess(): boolean {
@@ -143,7 +160,12 @@ export class LocalEngineLauncher {
     if (!isLoopbackUrl(opts.url)) {
       return { status: 'unavailable', reason: 'not-loopback' }
     }
+    const generation = this.generation
     if (await this.healthy(opts.url)) return { status: 'already-running' }
+    // dispose() ran while we awaited the health check: do not spawn afterwards.
+    if (generation !== this.generation) {
+      return { status: 'unavailable', reason: 'cancelled' }
+    }
     if (!opts.autoStart) return { status: 'unavailable', reason: 'disabled' }
     if (!opts.trusted) {
       return { status: 'unavailable', reason: 'untrusted-workspace' }
@@ -211,19 +233,12 @@ export class LocalEngineLauncher {
 
   /** Stop the service only if this launcher started it. */
   dispose(): void {
+    this.generation++
     const child = this.child
     this.child = undefined
     if (!child || child.exitCode !== null) return
     try {
-      if (process.platform === 'win32' && child.pid) {
-        // npx -> node tree: kill the whole tree, not just the shim.
-        nodeSpawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
-          stdio: 'ignore',
-          windowsHide: true,
-        })
-      } else {
-        child.kill()
-      }
+      this.killImpl(child)
     } catch (err) {
       this.log('Failed to stop local engine', String(err))
     }

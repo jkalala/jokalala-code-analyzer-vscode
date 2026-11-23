@@ -270,13 +270,26 @@ export class LocalEngineClient {
       for (const [language, group] of byLanguage) {
         const fileMap: Record<string, string> = {}
         let chars = 0
+        let truncated = false
         for (const f of group) {
-          if (chars + f.content.length > MAX_FILE_MAP_CHARS) break
+          // Skip a file that does not fit but keep trying smaller later ones.
+          if (chars + f.content.length > MAX_FILE_MAP_CHARS) {
+            truncated = true
+            continue
+          }
           fileMap[f.path] = f.content
           chars += f.content.length
         }
+        if (truncated) {
+          // The engine's verdict would lack sibling context, and it replaces
+          // Tier-1 injection findings; keep Tier-1 for this whole group.
+          this.log(
+            `Local engine: ${language} project exceeds the context limit; keeping Tier-1 results for it`
+          )
+          continue
+        }
         const known = Object.keys(fileMap)
-        const inMap = group.filter(f => f.path in fileMap)
+        const inMap = group
 
         for (let i = 0; i < inMap.length; i += BATCH_SIZE) {
           if (signal?.aborted) return null
@@ -309,6 +322,9 @@ export class LocalEngineClient {
             }>
           }
           for (const r of body.results ?? []) {
+            // No result means the engine did not analyse this file; leave it
+            // out so the merge keeps its Tier-1 findings.
+            if (!r.result) continue
             const issues = (r.result?.securityIssues ?? [])
               .map(raw => attributeEngineIssue(raw, r.path, known))
               .filter((x): x is EngineIssue => x !== null)

@@ -1,6 +1,7 @@
 # ⚠️ Archived — do not develop here
 
-This checkout is retired. It is stuck at extension **v2.6.0** (August 2026) and is
+This checkout is retired. It stops at extension **v2.7.2** (the 2.6.0 taint work
+landed on `main` in #13; the 2.7.x local-engine bridge is in this branch) and is
 no longer the source used to publish to the VS Code Marketplace.
 
 **The current source of truth is:**
@@ -26,9 +27,11 @@ was archived:
   / suppressions / tree-sitter work) — **could not be pushed** (blocked by an
   automated permission check in this session). It is backed up as a git
   bundle at `../feat-sast-taint-suppressions-packs-backup.bundle`
-  (sibling to this folder). To restore it into a fresh clone:
-  `git clone ../feat-sast-taint-suppressions-packs-backup.bundle restored-repo`
-  or `git fetch ../feat-sast-taint-suppressions-packs-backup.bundle feat/sast-taint-suppressions-packs:feat/sast-taint-suppressions-packs`
+  (sibling to this folder). Substitute the bundle's real absolute path for
+  `<path-to-bundle>` below, since a relative path resolves against wherever you
+  run the command. To restore it into a fresh clone:
+  `git clone <path-to-bundle> restored-repo`
+  or `git fetch <path-to-bundle> feat/sast-taint-suppressions-packs:feat/sast-taint-suppressions-packs`
   from within any clone of this repo. Consider pushing it to `origin`
   yourself before deleting this folder for good.
 
@@ -43,4 +46,6 @@ nothing has it open:
 Rename-Item "jokalala-code-analyzer-vscode-publish" "ARCHIVED_jokalala-code-analyzer-vscode-publish"
 ```
 
-or, once you've confirmed the bundle above is safe, delete it outright.
+or delete it outright, but only after checking `git status` in that folder: a
+bundle holds committed branches only, so uncommitted or untracked files (and any
+other local-only work) are lost on deletion unless you copy them out first.
