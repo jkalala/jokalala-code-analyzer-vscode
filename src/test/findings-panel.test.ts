@@ -2,7 +2,7 @@
 
 import * as assert from 'assert'
 import * as path from 'path'
-import { buildFindingRows } from '../providers/findings-panel'
+import { buildFindingRows, resolveFindingPath } from '../providers/findings-panel'
 import type { FileAnalysisResult, Issue } from '../interfaces/code-analysis-service.interface'
 
 const issue = (over: Partial<Issue>): Issue => ({
@@ -61,5 +61,17 @@ suite('findings panel rows', () => {
       [root]
     )
     assert.ok(rows[0]!.displayPath.endsWith('elsewhere/X.java'))
+  })
+})
+
+suite('findings panel path resolution', () => {
+  test('relative paths resolve against a workspace root; absolute ones are unchanged', () => {
+    const r1 = path.resolve('/ws/one')
+    const r2 = path.resolve('/ws/two')
+    assert.strictEqual(resolveFindingPath('src/A.java', [r1, r2]), path.resolve(r1, 'src/A.java'))
+    const abs = path.resolve('/elsewhere/X.java')
+    assert.strictEqual(resolveFindingPath(abs, [r1]), abs)
+    assert.strictEqual(resolveFindingPath('', [r1]), '')
+    assert.strictEqual(resolveFindingPath('src/A.java', []), 'src/A.java')
   })
 })

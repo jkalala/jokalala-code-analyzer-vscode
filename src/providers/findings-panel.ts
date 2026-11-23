@@ -16,6 +16,7 @@
  */
 
 import * as vscode from 'vscode'
+import * as fs from 'fs'
 import * as path from 'path'
 import type {
   FileAnalysisResult,
@@ -56,6 +57,25 @@ function cweOf(issue: Issue): string {
   return fromRule ? fromRule[0].toUpperCase() : ''
 }
 
+/**
+ * Relative paths must be made absolute before vscode.Uri.file, which would
+ * otherwise turn `src/A.java` into file:///src/A.java. In a multi-root
+ * workspace the first root that actually contains the file wins; otherwise the
+ * first root. Absolute paths are unchanged.
+ */
+export function resolveFindingPath(p: string, roots: string[]): string {
+  if (!p || path.isAbsolute(p) || roots.length === 0) return p
+  for (const root of roots) {
+    const candidate = path.resolve(root, p)
+    try {
+      if (fs.existsSync(candidate)) return candidate
+    } catch {
+      /* fall through to the next root */
+    }
+  }
+  return path.resolve(roots[0]!, p)
+}
+
 /** Flatten and sort results into table rows. Pure; exported for tests. */
 export function buildFindingRows(
   fileResults: FileAnalysisResult[],
@@ -64,7 +84,8 @@ export function buildFindingRows(
   const rows: Omit<FindingRow, 'index'>[] = []
   for (const fr of fileResults) {
     for (const issue of fr.issues) {
-      const filePath = issue.filePath ?? fr.filePath ?? ''
+      const rawPath = issue.filePath ?? fr.filePath ?? ''
+      const filePath = resolveFindingPath(rawPath, workspaceRoots)
       let display = filePath
       for (const root of workspaceRoots) {
         const rel = path.relative(root, filePath)
@@ -108,6 +129,8 @@ function nonce(): string {
 export class FindingsPanel {
   private static current: FindingsPanel | undefined
   private rows: FindingRow[] = []
+  /** Identifies the rows snapshot the webview is showing. */
+  private snapshot = 0
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -149,12 +172,20 @@ export class FindingsPanel {
 
   private update(fileResults: FileAnalysisResult[]): void {
     this.rows = buildFindingRows(fileResults, this.roots())
-    void this.panel.webview.postMessage({ type: 'rows', rows: this.rows })
+    this.snapshot++
+    void this.panel.webview.postMessage({
+      type: 'rows',
+      snapshot: this.snapshot,
+      rows: this.rows,
+    })
   }
 
   private async onMessage(msg: unknown): Promise<void> {
-    const m = msg as { type?: string; index?: unknown }
+    const m = msg as { type?: string; index?: unknown; snapshot?: unknown }
     if (m?.type !== 'open' || typeof m.index !== 'number') return
+    // A click made against rows that have since been replaced must not open
+    // whatever finding now sits at that index.
+    if (m.snapshot !== this.snapshot) return
     const row = this.rows[m.index]
     if (!row || !row.filePath) return
     await vscode.commands.executeCommand(
@@ -192,6 +223,8 @@ export class FindingsPanel {
   .badge { display: inline-block; font-size: .75em; padding: 0 6px; border-radius: 8px; margin-left: 6px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
   .fix { opacity: .8; margin-top: 4px; }
   .loc { font-family: var(--vscode-editor-font-family); }
+  button.link { background: none; border: 0; padding: 0; color: var(--vscode-textLink-foreground); font: inherit; text-align: left; cursor: pointer; }
+  button.link:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
   .empty { padding: 24px 0; opacity: .75; }
 </style></head>
 <body>
@@ -219,6 +252,7 @@ export class FindingsPanel {
   const count = document.getElementById('count');
   const empty = document.getElementById('empty');
   let rows = [];
+  let snapshot = 0;
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   function render() {
     const needle = q.value.trim().toLowerCase();
@@ -231,9 +265,15 @@ export class FindingsPanel {
       shown++;
       const tr = el('tr', 'row');
       tr.title = 'Open ' + r.displayPath + ':' + r.line;
-      tr.addEventListener('click', () => vscode.postMessage({ type: 'open', index: r.index }));
+      const open = () => vscode.postMessage({ type: 'open', index: r.index, snapshot });
+      tr.addEventListener('click', open);
       tr.appendChild(el('td', 'sev ' + r.severity, r.severity));
-      tr.appendChild(el('td', 'loc', r.displayPath + ':' + r.line));
+      const loc = el('td', 'loc');
+      const btn = el('button', 'link', r.displayPath + ':' + r.line);
+      btn.type = 'button';
+      btn.addEventListener('click', e => { e.stopPropagation(); open(); });
+      loc.appendChild(btn);
+      tr.appendChild(loc);
       tr.appendChild(el('td', '', r.cwe));
       const td = el('td');
       td.appendChild(el('span', '', r.message));
@@ -247,7 +287,7 @@ export class FindingsPanel {
     empty.hidden = shown !== 0;
   }
   q.addEventListener('input', render); sev.addEventListener('change', render); cross.addEventListener('change', render);
-  window.addEventListener('message', e => { if (e.data && e.data.type === 'rows') { rows = e.data.rows; render(); } });
+  window.addEventListener('message', e => { if (e.data && e.data.type === 'rows') { rows = e.data.rows; snapshot = e.data.snapshot; render(); } });
 </script>
 </body></html>`
   }

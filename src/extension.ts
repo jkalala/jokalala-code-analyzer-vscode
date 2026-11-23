@@ -2093,22 +2093,17 @@ function handleAnalysisSuccess(
     v2QualityPassed,
   })
 
-  // Pass V2 report to issues tree provider (only if quality gate passed)
-  issuesTreeProvider.updateIssues(
-    issues,
-    v2QualityPassed ? processedV2Report : undefined
-  )
   // Single-file local issues carry no filePath, so they would group under ''
   // and the panel could not open them. Attribute them to the scanned
-  // document; issues that already have a path are left alone.
+  // document before storing; issues that already have a path are left alone.
   const docPath = document.uri.fsPath
-  const panelResults = issuesTreeProvider.getFileResults().map(fr => {
-    const issuesWithPath = fr.issues.map(i =>
-      i.filePath ? i : { ...i, filePath: docPath }
-    )
-    return { ...fr, filePath: fr.filePath || docPath, issues: issuesWithPath }
-  })
-  FindingsPanel.refresh(panelResults)
+  const issuesWithPath = issues.map(i => (i.filePath ? i : { ...i, filePath: docPath }))
+  // Pass V2 report to issues tree provider (only if quality gate passed)
+  issuesTreeProvider.updateIssues(
+    issuesWithPath,
+    v2QualityPassed ? processedV2Report : undefined
+  )
+  FindingsPanel.refresh(issuesTreeProvider.getFileResults())
   recommendationsTreeProvider.updateRecommendations(recommendations)
   metricsTreeProvider.updateMetrics(result.summary)
 

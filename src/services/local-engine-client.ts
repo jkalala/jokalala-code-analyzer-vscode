@@ -79,6 +79,7 @@ type FetchLike = (
     headers?: Record<string, string>
     body?: string
     signal?: AbortSignal
+    redirect?: 'error' | 'follow' | 'manual'
   }
 ) => Promise<{
   ok: boolean
@@ -204,16 +205,20 @@ export class LocalEngineClient {
     init: { method: string; body?: string },
     timeoutMs: number,
     outer?: AbortSignal
-  ): Promise<{ ok: boolean; status: number; json(): Promise<unknown> }> {
+  ): Promise<{ ok: boolean; status: number; data: unknown }> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     const onOuter = () => controller.abort()
     outer?.addEventListener('abort', onOuter)
     try {
-      return await this.fetchImpl(
+      // redirect:'error' so a 307/308 can never forward source to another host.
+      const res = await this.fetchImpl(
         this.config.url.replace(/\/+$/, '') + pathname,
-        { ...init, headers: this.headers(), signal: controller.signal }
+        { ...init, headers: this.headers(), signal: controller.signal, redirect: 'error' }
       )
+      // Read the body before cleanup so the timeout and abort cover it too.
+      const data = res.ok ? await res.json() : undefined
+      return { ok: res.ok, status: res.status, data }
     } finally {
       clearTimeout(timer)
       outer?.removeEventListener('abort', onOuter)
@@ -234,7 +239,7 @@ export class LocalEngineClient {
     try {
       const res = await this.request('/health', { method: 'GET' }, 2000)
       if (!res.ok) return false
-      const body = (await res.json()) as { analyzerAvailable?: boolean }
+      const body = res.data as { analyzerAvailable?: boolean }
       this.healthy = body?.analyzerAvailable === true
     } catch (err) {
       this.log('Local engine not reachable', err)
@@ -315,7 +320,7 @@ export class LocalEngineClient {
             this.log(`Local engine returned HTTP ${res.status}; using Tier-1 only`)
             return null
           }
-          const body = (await res.json()) as {
+          const body = res.data as {
             results?: Array<{
               path: string
               result?: { securityIssues?: Array<Record<string, unknown>> }
